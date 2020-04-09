@@ -1,0 +1,53 @@
+include/rpl_init.inc [topology=1->2]
+include/stop_slave.inc
+set global rpl_semi_sync_slave_enabled = 1;
+CHANGE MASTER TO master_use_gtid= current_pos;
+include/start_slave.inc
+ALTER TABLE mysql.gtid_slave_pos ENGINE=InnoDB;
+set global rpl_semi_sync_master_enabled = 1;
+set global rpl_semi_sync_master_wait_point=AFTER_SYNC;
+SET @old_max_binlog_size= @@global.max_binlog_size;
+SET GLOBAL max_binlog_size= 4096;
+call mtr.add_suppression("Can't init tc log");
+call mtr.add_suppression("Aborting");
+CREATE TABLE t1 (a INT PRIMARY KEY, b MEDIUMTEXT) ENGINE=Innodb;
+INSERT INTO t1 VALUES (1, 'dummy1');
+SET DEBUG_SYNC= "commit_before_update_end_pos SIGNAL con1_ready WAIT_FOR con1_go";
+INSERT INTO t1 VALUES (2, REPEAT("x", 4100));
+SET DEBUG_SYNC= "now WAIT_FOR con1_ready";
+# Kill the server
+include/stop_slave.inc
+SELECT @@GLOBAL.gtid_current_pos;
+@@GLOBAL.gtid_current_pos
+0-1-5
+FOUND /tc-heuristic-recover: Truncated binlog File: \.\/master\-bin\.000001 of Size:[0-9]*, to Position */ in mysqld.1.err
+set global rpl_semi_sync_master_enabled = 1;
+set global rpl_semi_sync_master_wait_point=AFTER_SYNC;
+CHANGE MASTER TO master_host='127.0.0.1', master_port=SERVER_MYPORT_2, master_user='root', master_use_gtid=CURRENT_POS;
+set global rpl_semi_sync_slave_enabled = 1;
+include/start_slave.inc
+INSERT INTO t1 VALUES (3, 'dummy3');
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+2
+SHOW VARIABLES LIKE 'gtid_current_pos';
+Variable_name	Value
+gtid_current_pos	0-2-6
+SHOW VARIABLES LIKE 'gtid_current_pos';
+Variable_name	Value
+gtid_current_pos	0-2-6
+DROP TABLE t1;
+set global rpl_semi_sync_master_enabled = 0;
+set global rpl_semi_sync_slave_enabled = 0;
+set global rpl_semi_sync_master_wait_point=default;
+set global rpl_semi_sync_master_enabled = 0;
+set global rpl_semi_sync_slave_enabled = 0;
+set global rpl_semi_sync_master_wait_point=default;
+include/stop_slave.inc
+RESET MASTER;
+RESET SLAVE;
+RESET MASTER;
+RESET SLAVE;
+CHANGE MASTER TO master_host='127.0.0.1', master_port=SERVER_MYPORT_1, master_user='root', master_use_gtid=no;
+include/start_slave.inc
+include/rpl_end.inc

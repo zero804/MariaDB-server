@@ -638,6 +638,13 @@ struct xid_t {
 };
 typedef struct xid_t XID;
 
+/* struct for heuristic binlog truncate recovery */
+struct xid_recovery_member
+{
+  my_xid xid;
+  uint in_engine_prepare;  // number of engines that have xid prepared
+};
+
 /* for recover() handlerton call */
 #define MIN_XID_LIST_SIZE  128
 #define MAX_XID_LIST_SIZE  (1024*128)
@@ -4270,7 +4277,8 @@ int ha_commit_one_phase(THD *thd, bool all);
 int ha_commit_trans(THD *thd, bool all);
 int ha_rollback_trans(THD *thd, bool all);
 int ha_prepare(THD *thd);
-int ha_recover(HASH *commit_list);
+int ha_recover(HASH *commit_list, MEM_ROOT *mem_root= NULL);
+void ha_recover_binlog_truncate_complete(HASH *commit_list);
 
 /* transactions: these functions never call handlerton functions directly */
 int ha_enable_transaction(THD *thd, bool on);
@@ -4326,4 +4334,5 @@ void print_keydup_error(TABLE *table, KEY *key, myf errflag);
 
 int del_global_index_stat(THD *thd, TABLE* table, KEY* key_info);
 int del_global_table_stat(THD *thd, LEX_STRING *db, LEX_STRING *table);
+uint ha_count_rw_all(THD *thd, Ha_trx_info **ptr_ha_info, bool count_through);
 #endif /* HANDLER_INCLUDED */

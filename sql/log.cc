@@ -4746,7 +4746,7 @@ int MYSQL_BIN_LOG::purge_index_entry(THD *thd, ulonglong *reclaimed_space,
           }
           goto err;
         }
-           
+
         error= 0;
 
         DBUG_PRINT("info",("purging %s",log_info.log_file_name));
@@ -7882,6 +7882,7 @@ MYSQL_BIN_LOG::trx_group_commit_leader(group_commit_entry *leader)
         first= false;
       }
 
+      DEBUG_SYNC(leader->thd, "commit_before_update_end_pos");
       /* update binlog_end_pos so it can be read by dump thread
        *
        * note: must be _after_ the RUN_HOOK(after_flush) or else
@@ -8969,7 +8970,7 @@ int TC_LOG_MMAP::open(const char *opt_name)
   {
     if (my_errno != ENOENT)
       goto err;
-    if (using_heuristic_recover())
+    if (using_heuristic_recover(opt_name))
       return 1;
     if ((fd= mysql_file_create(key_file_tclog, logname, CREATE_MODE,
                                O_RDWR | O_CLOEXEC, MYF(MY_WME))) < 0)
@@ -9500,22 +9501,595 @@ TC_LOG_MMAP  tc_log_mmap;
     0	no heuristic recovery was requested
   @retval
     1   heuristic recovery was performed
+    2   heuristic recovery failed
 */
 
-int TC_LOG::using_heuristic_recover()
+int TC_LOG::using_heuristic_recover(const char* opt_name)
 {
+  LOG_INFO log_info;
+  int error= 0;
+  HASH xids, *ptr_xids= NULL;
+  MEM_ROOT mem_root, *ptr_mem_root= NULL;
+  int rc= 1;
+
   if (!tc_heuristic_recover)
-    return 0;
+    return (rc= 0);
 
   sql_print_information("Heuristic crash recovery mode");
-  if (ha_recover(0))
+  if (tc_heuristic_recover == TC_RECOVER_BINLOG_TRUNCATE)
+  {
+    (void) my_hash_init(&xids, &my_charset_bin, TC_LOG_PAGE_SIZE/3, 0,
+                        sizeof(my_xid), 0, 0, MYF(0));
+    (void) init_alloc_root(&mem_root,
+                           TC_LOG_PAGE_SIZE, TC_LOG_PAGE_SIZE, MYF(0));
+    ptr_xids= &xids;
+    ptr_mem_root= &mem_root;
+  }
+  if ((error= ha_recover(ptr_xids, ptr_mem_root)))
+  {
     sql_print_error("Heuristic crash recovery failed");
+    goto err;
+  }
+
+  if (!strcmp(opt_name, opt_bin_logname) &&
+      tc_heuristic_recover == TC_RECOVER_BINLOG_TRUNCATE)
+  {
+    if ((error= mysql_bin_log.find_log_pos(&log_info, NullS, 1)))
+      sql_print_error("tc-heuristic-recover failed to find binlog file in "
+                      "the index file. Error: %d; consider recovering "
+                      "the index file and retry", error);
+    else if ((error= heuristic_binlog_rollback(&xids)))
+      sql_print_error("Heuristic BINLOG_TRUNCATE crash recovery failed. "
+                      "Error: %d", error);
+    if (error > 0)
+      rc= 2;
+  }
+
+err:
   sql_print_information("Please restart mysqld without --tc-heuristic-recover");
-  return 1;
+  if (tc_heuristic_recover == TC_RECOVER_BINLOG_TRUNCATE)
+  {
+    free_root(&mem_root, MYF(0));
+    my_hash_free(&xids);
+  }
+  return rc;
 }
 
 /****** transaction coordinator log for 2pc - binlog() based solution ******/
 #define TC_LOG_BINLOG MYSQL_BIN_LOG
+
+/**
+  Truncates the current binlog to specified position. Removes the rest of binlogs
+  which are present after this binlog file.
+
+  @param  truncate_file    Holds the binlog name to be truncated
+  @param  truncate_pos     Position within binlog from where it needs to
+                           truncated.
+
+  @retval true             ok
+  @retval false            error
+
+*/
+bool MYSQL_BIN_LOG::truncate_and_remove_binlogs(const char *truncate_file,
+                                                my_off_t truncate_pos)
+{
+  int error= 0;
+#ifdef HAVE_REPLICATION
+  LOG_INFO log_info;
+  THD *thd= current_thd;
+  my_off_t index_file_offset= 0;
+  File file= -1;
+  IO_CACHE cache;
+  MY_STAT s;
+  my_off_t binlog_size;
+
+  if ((error= find_log_pos(&log_info, truncate_file, 1)))
+  {
+    sql_print_error("tc-heuristic-recover: Failed to locate binary log file:%s."
+                    "Error:%d", truncate_file, error);
+    goto end;
+  }
+
+  while (!(error= find_next_log(&log_info, 1)))
+  {
+    if (!index_file_offset)
+    {
+      index_file_offset= log_info.index_file_start_offset;
+      if ((error= open_purge_index_file(TRUE)))
+      {
+        sql_print_error("tc-heuristic-recover: Failed to open purge index "
+                        "file:%s. Error:%d", purge_index_file_name, error);
+        goto end;
+      }
+    }
+    if ((error= register_purge_index_entry(log_info.log_file_name)))
+    {
+      sql_print_error("tc-heuristic-recover: Failed to copy %s to purge index"
+                      " file. Error:%d", log_info.log_file_name, error);
+      goto end;
+    }
+  }
+
+  if (error != LOG_INFO_EOF)
+  {
+    sql_print_error("tc-heuristic-recover: Failed to find the next binlog to "
+                    "add to purge index register. Error:%d", error);
+    goto end;
+  }
+
+  if (is_inited_purge_index_file())
+  {
+    if (!index_file_offset)
+      index_file_offset= log_info.index_file_start_offset;
+
+    if ((error= sync_purge_index_file()))
+    {
+      sql_print_error("tc-heuristic-recover: Failed to flush purge index "
+                      "file. Error:%d", error);
+      goto end;
+    }
+
+    // Trim index file
+    if ((error=
+         mysql_file_chsize(index_file.file, index_file_offset, '\n',
+                           MYF(MY_WME))) ||
+         (error=
+         mysql_file_sync(index_file.file, MYF(MY_WME|MY_SYNC_FILESIZE))))
+    {
+      sql_print_error("tc-heuristic-recover: Failed to trim binlog index "
+                      "file:%s to offset:%llu. Error:%d", index_file_name,
+                      index_file_offset);
+      mysql_file_close(index_file.file, MYF(MY_WME));
+      goto end;
+    }
+
+    /* Reset data in old index cache */
+    if ((error= reinit_io_cache(&index_file, READ_CACHE, (my_off_t) 0, 0, 1)))
+    {
+      sql_print_error("tc-heuristic-recover: Failed to reinit binlog index "
+                      "file. Error:%d", error);
+      mysql_file_close(index_file.file, MYF(MY_WME));
+      goto end;
+    }
+
+    /* Read each entry from purge_index_file and delete the file. */
+    if ((error= purge_index_entry(thd, NULL, TRUE)))
+    {
+      sql_print_error("tc-heuristic-recover: Failed to process registered "
+                      "files that would be purged.");
+      goto end;
+    }
+  }
+
+  DBUG_ASSERT(truncate_pos);
+
+  if ((file= mysql_file_open(key_file_binlog, truncate_file,
+                             O_RDWR | O_BINARY, MYF(MY_WME))) < 0)
+  {
+    error= 1;
+    sql_print_error("tc-heuristic-recover: Failed to open binlog file:%s for "
+                    "truncation.", truncate_file);
+    goto end;
+  }
+  my_stat(truncate_file, &s, MYF(0));
+  binlog_size= s.st_size;
+
+  /* Change binlog file size to truncate_pos */
+  if ((error=
+       mysql_file_chsize(file, truncate_pos, 0, MYF(MY_WME))) ||
+      (error= mysql_file_sync(file, MYF(MY_WME|MY_SYNC_FILESIZE))))
+  {
+    sql_print_error("tc-heuristic-recover: Failed to trim the "
+                    "binlog file:%s to size:%llu. Error:%d",
+                    truncate_file, truncate_pos, error);
+    goto end;
+  }
+  else
+  {
+    sql_print_information("tc-heuristic-recover: Truncated binlog "
+                          "File: %s of Size:%llu, to Position:%llu.",
+                          truncate_file, binlog_size, truncate_pos);
+  }
+  if (!(error= init_io_cache(&cache, file, IO_SIZE, WRITE_CACHE,
+                            (my_off_t) truncate_pos, 0, MYF(MY_WME|MY_NABP))))
+  {
+    /*
+      Write Stop_log_event to ensure clean end point for the binary log being
+      truncated.
+    */
+    Stop_log_event se;
+    se.checksum_alg= (enum_binlog_checksum_alg) binlog_checksum_options;
+    if ((error= write_event(&se, &cache)))
+    {
+      sql_print_error("tc-heuristic-recover: Failed to write stop event to "
+                      "binary log. Errno:%d",
+                      (cache.error == -1) ? my_errno : error);
+      goto end;
+    }
+    if ((error= flush_io_cache(&cache)) ||
+        (error= mysql_file_sync(file, MYF(MY_WME|MY_SYNC_FILESIZE))))
+    {
+      sql_print_error("tc-heuristic-recover: Faild to write stop event to "
+                      "binary log. Errno:%d",
+                      (cache.error == -1) ? my_errno : error);
+    }
+  }
+  else
+      sql_print_error("tc-heuristic-recover: Failed to initialize binary log "
+                      "cache for writing stop event. Errno:%d",
+                      (cache.error == -1) ? my_errno : error);
+
+end:
+  if (file >= 0)
+  {
+    end_io_cache(&cache);
+    mysql_file_close(file, MYF(MY_WME));
+  }
+  error= error || close_purge_index_file();
+#endif
+  return error > 0;
+}
+
+/**
+  Returns the checkpoint binlog file name found in the lastest binlog file.
+
+  @param  checkpoint_file  Holds the binlog checkpoint file name.
+
+  @retval 0                ok
+  @retval 1                error
+
+*/
+int TC_LOG_BINLOG::get_binlog_checkpoint_file(char* checkpoint_file)
+{
+  Log_event *ev= NULL;
+  bool binlog_checkpoint_found= false;
+  LOG_INFO log_info;
+  const char *errmsg;
+  IO_CACHE    log;
+  File        file;
+  Format_description_log_event fdle(BINLOG_VERSION);
+  char        log_name[FN_REFLEN];
+  int error=1;
+
+  if (!fdle.is_valid())
+    return 1;
+
+  if ((error= find_log_pos(&log_info, NullS, 1)))
+  {
+    sql_print_error("tc-heuristic-recover: find_log_pos() failed to read first "
+                    "binary log entry from index file.(error: %d)", error);
+    return error;
+  }
+
+  // Move to the last binary log.
+  do
+  {
+    strmake_buf(log_name, log_info.log_file_name);
+  } while (!(error= find_next_log(&log_info, 1)));
+
+  if (error != LOG_INFO_EOF)
+  {
+    sql_print_error("tc-heuristic-recover: find_next_log() failed "
+                    "(error: %d)", error);
+    return error;
+  }
+  if ((file= open_binlog(&log, log_name, &errmsg)) < 0)
+  {
+    sql_print_error("tc-heuristic-recover failed to open the binlog:%s for "
+                    "reading checkpoint file name. Error: %s",
+                    log_info.log_file_name, errmsg);
+    return error;
+  }
+  while (!binlog_checkpoint_found &&
+         (ev=
+          Log_event::read_log_event(&log, 0, &fdle, opt_master_verify_checksum))
+         && ev->is_valid())
+  {
+    enum Log_event_type typ= ev->get_type_code();
+    if (typ == BINLOG_CHECKPOINT_EVENT)
+    {
+      size_t dir_len;
+      Binlog_checkpoint_log_event *cev= (Binlog_checkpoint_log_event *)ev;
+      if (cev->binlog_file_len >= FN_REFLEN)
+      {
+        sql_print_error("tc-heuristic-recover: Incorrect binlog checkpoint "
+                        "event with too long file name found.");
+        delete ev;
+        ev= NULL;
+        end_io_cache(&log);
+        mysql_file_close(file, MYF(MY_WME));
+        return 1;
+      }
+      else
+      {
+        dir_len= dirname_length(log_name);
+        strmake(strnmov(checkpoint_file, log_name, dir_len),
+                cev->binlog_file_name, FN_REFLEN - 1 - dir_len);
+        binlog_checkpoint_found= true;
+      }
+    }
+    delete ev;
+    ev= NULL;
+  } // End of while
+  end_io_cache(&log);
+  mysql_file_close(file, MYF(MY_WME));
+  file= -1;
+  /*
+    Old binary log without checkpoint found, binlog truncation is not
+    possible. Hence return error.
+  */
+  if (!binlog_checkpoint_found)
+    return 1;
+
+  return 0;
+}
+
+
+/**
+   Truncates the binary log, according to the transactions that got rolled
+   back from engines, during --heuristic-recover=BINLOG_TRUNCATE.
+   Global GTID state is adjusted as per the truncated binlog.
+
+   Called from @c TC_LOG::using_heuristic_recover(const char* opt_name)
+
+   @param opt_name       The base name of binary log.
+
+   @return               indicates success or failure of binlog rollback
+    @retval 0 success
+    @retval 1 failure
+
+*/
+int TC_LOG_BINLOG::heuristic_binlog_rollback(HASH *xids)
+{
+  int error=0;
+#ifdef HAVE_REPLICATION
+  Log_event *ev= NULL;
+  char binlog_truncate_file_name[FN_REFLEN] = {0};
+  char checkpoint_file[FN_REFLEN];
+  my_off_t binlog_truncate_pos= 0;
+  LOG_INFO log_info;
+  const char *errmsg;
+  IO_CACHE    log;
+  File        file=-1;
+  Format_description_log_event fdle(BINLOG_VERSION);
+  bool is_safe= true;
+  my_off_t tmp_truncate_pos= 0, tmp_pos= 0;
+  rpl_gtid last_gtid;
+  bool last_gtid_standalone= false;
+  bool last_gtid_valid= false;
+  uint last_gtid_engines= 0;
+
+  if ((error= get_binlog_checkpoint_file(checkpoint_file)))
+  {
+      sql_print_error("tc-heuristic-recover: Failed to read latest checkpoint "
+                      "binary log name.");
+      goto end;
+    }
+  sql_print_information("tc-heuristic-recover: Initialising heuristic "
+                        "rollback of binary log using last checkpoint "
+                        "file:%s.", checkpoint_file);
+  if ((error= find_log_pos(&log_info, checkpoint_file, 1)))
+  {
+    sql_print_error("tc-heuristic-recover: Failed to locate binary log file:%s "
+                    "in index file. Error:%d", checkpoint_file, error);
+    goto end;
+  }
+  if ((file= open_binlog(&log, log_info.log_file_name, &errmsg)) < 0 ||
+      DBUG_EVALUATE_IF("fault_injection_opening_binlog", (errmsg="Unknown"),
+        FALSE))
+  {
+    error= 1;
+    sql_print_error("tc-heuristic-recover: Failed to open the binlog:%s for "
+                    "recovery. Error:%s", log_info.log_file_name, errmsg);
+    goto end;
+  }
+
+
+  error= read_state_from_file();
+  if (error && error != 2)
+  {
+    sql_print_error("tc-heuristic-recover: Failed to load global gtid binlog "
+                    "state from file");
+    goto end;
+  }
+  if (!fdle.is_valid())
+  {
+    error= 1;
+    sql_print_error("tc-heuristic-recover: Failed due to invalid format "
+                    "description log event.");
+    goto end;
+  }
+
+  for(;;)
+  {
+    while (is_safe &&
+           (ev= Log_event::read_log_event(&log, 0, &fdle,
+            opt_master_verify_checksum)) && ev->is_valid())
+    {
+      enum Log_event_type typ= ev->get_type_code();
+      switch (typ) {
+      case XID_EVENT:
+      {
+        xid_recovery_member *member;
+
+        if ((member= (xid_recovery_member*)
+             my_hash_search(xids,
+                            (uchar*) &static_cast<Xid_log_event*>(ev)->xid,
+                            sizeof(my_xid))) != NULL)
+        {
+          // Possible truncate candidate validation follows as:
+          // in_engine_prepare is examined and set or left to stay
+          // either to/as 0 for to-commit mark, or non-zero for rollback
+          if (member->in_engine_prepare > last_gtid_engines)
+          {
+            sql_print_error("Error to recovery multi-engine transaction: "
+                            "the number of engines %du exceeds the "
+                            "respective number %du in its GTID event",
+                            member->in_engine_prepare, last_gtid_engines);
+            error= 1;
+            goto end;
+          }
+          else if (member->in_engine_prepare < last_gtid_engines)
+          {
+            member->in_engine_prepare= 0; // partly committed, to complete
+          }
+          else
+          {
+            DBUG_ASSERT(binlog_truncate_pos == 0);
+
+            binlog_truncate_pos= tmp_truncate_pos; // ascertained now
+          }
+        }
+      }
+      break;
+      case GTID_LIST_EVENT:
+      {
+        Gtid_list_log_event *glev= (Gtid_list_log_event *)ev;
+            /* Initialise the binlog state from the Gtid_list event. */
+            if (binlog_truncate_pos == 0  && glev->count > 0 &&
+                rpl_global_gtid_binlog_state.load(glev->list, glev->count))
+            {
+              error= 1;
+              sql_print_error("tc-heuristic-recover: Failed to read GTID List "
+                              "event.");
+              goto end;
+            }
+      }
+      break;
+      case GTID_EVENT:
+      {
+        Gtid_log_event *gev= (Gtid_log_event *)ev;
+        /* Update the binlog state with any GTID logged after Gtid_list. */
+        last_gtid.domain_id= gev->domain_id;
+        last_gtid.server_id= gev->server_id;
+        last_gtid.seq_no= gev->seq_no;
+        last_gtid_standalone=
+          ((gev->flags2 & Gtid_log_event::FL_STANDALONE) ? true : false);
+        last_gtid_valid= true;
+        last_gtid_engines= gev->extra_engines + 1;
+        if (gev->flags2 & Gtid_log_event::FL_TRANSACTIONAL &&
+            binlog_truncate_pos == 0)
+        {
+          strmake_buf(binlog_truncate_file_name, log_info.log_file_name);
+          tmp_truncate_pos= tmp_pos;   // yet only a candidate
+        }
+        else
+        {
+          if (binlog_truncate_pos > 0)
+            is_safe= false;
+        }
+      }
+      break;
+      default:
+          /* Nothing. */
+        break;
+      } // End switch
+
+      if (binlog_truncate_pos == 0 && last_gtid_valid &&
+          ((last_gtid_standalone && !ev->is_part_of_group(typ)) ||
+           (!last_gtid_standalone &&
+            (typ == XID_EVENT ||
+             (typ == QUERY_EVENT &&
+              (((Query_log_event *)ev)->is_commit() ||
+               ((Query_log_event *)ev)->is_rollback()))))))
+      {
+        if ((error= rpl_global_gtid_binlog_state.update_nolock(&last_gtid,
+                                                               false)))
+        {
+          sql_print_error("tc-heuristic-recover: Failed to update GTID within "
+                          "global gtid state.");
+          goto end;
+        }
+        last_gtid_valid= false;
+      }
+      // Used to identify the last group specific end position.
+      tmp_pos= ev->log_pos;
+      delete ev;
+      ev= NULL;
+    } // End While
+    if (file >= 0)
+    {
+      end_io_cache(&log);
+      mysql_file_close(file, MYF(MY_WME));
+      file= -1;
+    }
+    if (is_safe)
+    {
+      if ((error= find_next_log(&log_info, 1)))
+      {
+        if (error != LOG_INFO_EOF)
+        {
+          sql_print_error("tc-heuristic-recover: Failed to read next binary "
+                          "log during recovery.");
+          goto end;
+        }
+        else
+        {
+          error= 0; // LOG_INFO_EOF= -1 is not an error.
+          break;
+        }
+      }
+      if ((file= open_binlog(&log, log_info.log_file_name, &errmsg)) < 0)
+      {
+        error= 1;
+        sql_print_error("tc-heuristic-recover: Failed to open the binlog:%s for "
+                        "recovery. Error:%s", log_info.log_file_name, errmsg);
+        goto end;
+      }
+    }
+    else
+      break;
+  } //end of for(;;)
+
+  /* complete with xids transactions in engines (regadless of is_safe)  */
+  (void) ha_recover_binlog_truncate_complete(xids);
+
+  if (binlog_truncate_pos == 0)
+    goto end; // Nothing to truncate
+  else
+  {
+    DBUG_ASSERT(binlog_truncate_pos > 0);
+
+    sql_print_information("tc-heuristic-recover: Binary log to be truncated "
+                          "File:%s Pos:%llu.", binlog_truncate_file_name,
+                          binlog_truncate_pos);
+  }
+
+  if (is_safe)
+  {
+    if ((error= truncate_and_remove_binlogs(binlog_truncate_file_name,
+                                            binlog_truncate_pos)))
+    {
+      sql_print_error("tc-heuristic-recover: Failed to trim the binary log to "
+                      "File:%s Pos:%llu.", binlog_truncate_file_name,
+                      binlog_truncate_pos);
+      goto end;
+    }
+  }
+  else
+  {
+    sql_print_warning("tc-heuristic-recover cannot trim the binary log to "
+                      "File:%s Pos:%llu as unsafe statements (non-trans/DDL) "
+                      "statements are found beyond the truncation position.",
+                      binlog_truncate_file_name, binlog_truncate_pos);
+  }
+  if ((error= write_state_to_file()))
+  {
+    sql_print_error("tc-heuristic-recover: Failed to write global gtid state "
+                    "to file");
+    goto end;
+  }
+
+end:
+  if (file >= 0)
+  {
+    end_io_cache(&log);
+    mysql_file_close(file, MYF(MY_WME));
+  }
+#endif
+
+  return error;
+}
 
 int TC_LOG_BINLOG::open(const char *opt_name)
 {
@@ -9531,11 +10105,13 @@ int TC_LOG_BINLOG::open(const char *opt_name)
     return 1;
   }
 
-  if (using_heuristic_recover())
+  if (using_heuristic_recover(opt_name))
   {
     mysql_mutex_lock(&LOCK_log);
     /* generate a new binlog to mask a corrupted one */
-    open(opt_name, LOG_BIN, 0, 0, WRITE_CACHE, max_binlog_size, 0, TRUE);
+    DBUG_EVALUATE_IF("skip_new_binlog_create", 0,
+                     open(opt_name, LOG_BIN, 0, 0, WRITE_CACHE,
+                          max_binlog_size, 0, TRUE));
     mysql_mutex_unlock(&LOCK_log);
     cleanup();
     return 1;

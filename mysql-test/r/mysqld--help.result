@@ -1089,7 +1089,7 @@ The following specify which files/extra groups are read (specified before remain
  The number of cached open tables
  --tc-heuristic-recover=name 
  Decision to use in heuristic recover process. One of: OFF,
- COMMIT, ROLLBACK
+ COMMIT, ROLLBACK, BINLOG_TRUNCATE
  --thread-cache-size=# 
  How many threads we should keep in a cache for reuse
  --thread-pool-idle-timeout=# 

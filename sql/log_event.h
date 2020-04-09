@@ -3193,6 +3193,12 @@ public:
   uint64 commit_id;
   uint32 domain_id;
   uchar flags2;
+  uint  flags_extra; // more flags area placed after the regular flags2's one
+  /*
+    Extra (to binlog and a "base" engine) recoverable engines participating
+    in the transaction. Zero, when none.
+  */
+  uint extra_engines;
 
   /* Flags2. */
 
@@ -3220,6 +3226,14 @@ public:
   static const uchar FL_WAITED= 16;
   /* FL_DDL is set for event group containing DDL. */
   static const uchar FL_DDL= 32;
+
+  /* Flags_extra. */
+
+  /*
+    FL_EXTRA_MULTI_ENGINE is set for event group comprising a transaction
+    involving multiple storage engines.
+  */
+  static const uchar FL_EXTRA_MULTI_ENGINE= 1;
 
 #ifdef MYSQL_SERVER
   Gtid_log_event(THD *thd_arg, uint64 seq_no, uint32 domain_id, bool standalone,
