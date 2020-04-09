@@ -1,0 +1,75 @@
+# ==== Purpose ====
+#
+# Test verifies the truncation of single binary log file.
+#
+# ==== Implementation ====
+#
+# Steps:
+#    0 - Create table t1 and insert a row.
+#    1 - Insert an another row such that it gets written to binlog but commit
+#        in engine fails as server crashed at this point.
+#    2 - Restart server with --tc-heuristic-recover=BINLOG_TRUNCATE
+#    3 - Upon server start 'master-bin.000001' will be truncated to contain
+#        only the first insert
+#
+# ==== References ====
+#
+# MDEV-21117: --tc-heuristic-recover=rollback is not replication safe
+
+
+--source include/have_innodb.inc
+--source include/have_log_bin.inc
+--source include/have_debug.inc
+--source include/have_binlog_format_statement.inc
+
+call mtr.add_suppression("Can't init tc log");
+call mtr.add_suppression("Aborting");
+
+connect(master,localhost,root,,);
+connect(master1,localhost,root,,);
+
+--connection master
+RESET MASTER;
+CREATE TABLE t ( f INT ) ENGINE=INNODB;
+INSERT INTO t VALUES (10);
+
+--connection master1
+# Hold insert after write to binlog and before "run_commit_ordered" in engine
+SET DEBUG_SYNC= "commit_before_update_end_pos SIGNAL con1_ready WAIT_FOR con1_go";
+send INSERT INTO t VALUES (20);
+
+--connection master
+SET DEBUG_SYNC= "now WAIT_FOR con1_ready";
+
+--write_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+wait
+EOF
+
+--source include/kill_mysqld.inc
+--source include/wait_until_disconnected.inc
+#
+# Server restart
+#
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+restart: --tc-heuristic-recover=BINLOG_TRUNCATE
+EOF
+--source include/wait_until_disconnected.inc
+
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+restart:
+EOF
+
+connection default;
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+
+--connection master
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+
+--echo "One row should be present in table 't'"
+SELECT COUNT(*) FROM t;
+
+--echo "gtid_binlog_state should be 0-1-2
+SELECT @@GLOBAL.gtid_binlog_state;
+DROP TABLE t;

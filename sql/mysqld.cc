@@ -292,7 +292,7 @@ const char *show_comp_option_name[]= {"YES", "NO", "DISABLED"};
 
 static const char *tc_heuristic_recover_names[]=
 {
-  "OFF", "COMMIT", "ROLLBACK", NullS
+  "OFF", "COMMIT", "ROLLBACK", "BINLOG_TRUNCATE", NullS
 };
 static TYPELIB tc_heuristic_recover_typelib=
 {

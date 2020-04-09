@@ -1,0 +1,88 @@
+# ==== Purpose ====
+#
+# Test verifies truncation of multiple binary logs.
+#
+# ==== Implementation ====
+#
+# Steps:
+#    0 - Create a table in innodb engine and execute FLUSH LOGS command to
+#        generate a new binary log.
+#    1 - Set max_binlog_size= 4096. Insert a row such that the max_binlog_size
+#        is reached and binary log gets rotated.
+#    2 - Using debug simulation make the server crash at a point where the DML
+#        transaction is written to binary log but not committed in engine.
+#    3 - At the time of crash three binary logs will be there
+#        master-bin.0000001, master-bin.000002 and master-bin.000003.
+#    4 - Restart server with --tc-heuristic-recover=BINLOG_TRUNCATE
+#    5 - Since the prepared DML in master-bin.000002 the binary log will be
+#        truncated and master-bin.000003 will be removed.
+#
+# ==== References ====
+#
+# MDEV-21117: --tc-heuristic-recover=rollback is not replication safe
+
+
+--source include/have_innodb.inc
+--source include/have_log_bin.inc
+--source include/have_debug.inc
+--source include/have_debug_sync.inc
+--source include/have_binlog_format_row.inc
+
+SET @old_max_binlog_size= @@GLOBAL.max_binlog_size;
+SET GLOBAL max_binlog_size= 4096;
+call mtr.add_suppression("Can't init tc log");
+call mtr.add_suppression("Aborting");
+
+RESET MASTER;
+
+CREATE TABLE t1 (a INT PRIMARY KEY, b MEDIUMTEXT) ENGINE=Innodb;
+FLUSH LOGS;
+connect(master1,localhost,root,,);
+connect(master2,localhost,root,,);
+
+--connection master1
+# Hold insert after write to binlog and before "run_commit_ordered" in engine.
+# Use "commit_after_release_LOCK_log" sync point. This point is reached after
+# the binary log end position is updated which actually triggers binlog to be
+# rotated.
+--echo "List of binary logs before rotation"
+--source include/show_binary_logs.inc
+SET DEBUG_SYNC= "commit_after_release_LOCK_log SIGNAL con1_ready WAIT_FOR con1_go";
+send INSERT INTO t1 VALUES (2, REPEAT("x", 4100));
+
+--connection master2
+SET DEBUG_SYNC= "now WAIT_FOR con1_ready";
+--echo "List of binary logs after rotation"
+--source include/show_binary_logs.inc
+--write_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+wait
+EOF
+
+--source include/kill_mysqld.inc
+--source include/wait_until_disconnected.inc
+
+#
+# Server restart
+#
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+restart: --tc-heuristic-recover=BINLOG_TRUNCATE
+EOF
+--source include/wait_until_disconnected.inc
+
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+restart:
+EOF
+
+connection default;
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+
+--echo "Zero rows should be present in table"
+SELECT COUNT(*) FROM t1;
+
+SELECT @@GLOBAL.gtid_current_pos;
+
+DROP TABLE t1;
+SELECT @@GLOBAL.gtid_binlog_state;
+
+--echo # End of the tests

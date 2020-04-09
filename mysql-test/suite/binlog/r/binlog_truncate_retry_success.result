@@ -1,0 +1,37 @@
+call mtr.add_suppression("Can't init tc log");
+call mtr.add_suppression("Aborting");
+call mtr.add_suppression("tc-heuristic-recover: Failed to open the binlog");
+call mtr.add_suppression("Heuristic BINLOG_TRUNCATE crash recovery failed. Error:");
+RESET MASTER;
+CREATE TABLE t1 (a INT PRIMARY KEY, b MEDIUMTEXT) ENGINE=Innodb;
+INSERT INTO t1 VALUES (1,'dummy');
+connect master1,localhost,root,,;
+connect master2,localhost,root,,;
+connection master1;
+SET DEBUG_SYNC= "commit_after_release_LOCK_log SIGNAL con1_ready WAIT_FOR con1_go";
+INSERT INTO t1 VALUES (2,'dummy');
+connection master2;
+SET DEBUG_SYNC= "now WAIT_FOR con1_ready";
+"List of binary logs"
+show binary logs;
+Log_name	File_size
+master-bin.000001	#
+# Kill the server
+connection default;
+FOUND 1 /tc-heuristic-recover: Truncated binlog File: \.\/master\-bin\.000001 of Size:[0-9]*, to Position */ in mysqld.1.err
+"One row should be present in table"
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+1
+"Two gtids should be present 0-1-2, one for CREATE and the other for INSERT"
+SELECT @@GLOBAL.gtid_current_pos;
+@@GLOBAL.gtid_current_pos
+0-1-2
+DROP TABLE t1;
+"Three gtids should be present 0-1-3 after table 't1' is dropped."
+SELECT @@GLOBAL.gtid_binlog_state;
+@@GLOBAL.gtid_binlog_state
+0-1-3
+disconnect master1;
+disconnect master2;
+End of the tests

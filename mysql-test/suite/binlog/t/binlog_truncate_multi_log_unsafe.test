@@ -1,0 +1,116 @@
+# ==== Purpose ====
+#
+# Test verifies truncation of multiple binary logs will report an error on
+# unsafe scenario.
+#
+# ==== Implementation ====
+#
+# Steps:
+#    0 - Set max_binlog_size= 4096. Create a table 'ti' using transactional
+#        storage engine. Do an insert such that the max_binlog_size is reached
+#        and binary log gets rotated. Hold this thread at a position where
+#        transaction is written to binary log but not committed in engine.
+#    1 - Create a table named 'tm' using non transactional storage engine.
+#    2 - Insert a row in 'tm' table. The DML will reach the engine and it is
+#        also written to binary log.
+#    3 - Kill and restart the server with --tc-heuristic-recover=BINLOG_TRUNCATE
+#    4 - Check for binary log truncation unsafe message in error log.
+#    5 - No rows should be present in 'ti' table. The 'tm' row may not be present
+#        either (requiring that engine recovery that this test is not after).
+#
+# ==== References ====
+#
+# MDEV-21117: --tc-heuristic-recover=rollback is not replication safe
+
+
+--source include/have_innodb.inc
+--source include/have_log_bin.inc
+--source include/have_debug.inc
+--source include/have_debug_sync.inc
+--source include/have_binlog_format_row.inc
+
+--let $old_max_binlog_size= `select @@global.max_binlog_size`
+SET GLOBAL max_binlog_size= 4096;
+
+call mtr.add_suppression("Table '.*tm' is marked as crashed and should be repaired");
+call mtr.add_suppression("Got an error from unknown thread");
+call mtr.add_suppression("Checking table:   '.*tm'");
+call mtr.add_suppression("Recovering table: '.*tm'");
+call mtr.add_suppression("tc-heuristic-recover cannot trim the binary log to");
+call mtr.add_suppression("Can't init tc log");
+call mtr.add_suppression("Aborting");
+call mtr.add_suppression("Found 1 prepared transactions");
+call mtr.add_suppression("mysqld: Table.*tm.*is marked as crashed");
+call mtr.add_suppression("Checking table.*tm");
+
+RESET MASTER;
+
+CREATE TABLE ti (a INT PRIMARY KEY, b MEDIUMTEXT) ENGINE=Innodb;
+CREATE TABLE tm (f INT) ENGINE=MYISAM;
+
+connect(master1,localhost,root,,);
+connect(master2,localhost,root,,);
+
+--connection master1
+# Hold insert after write to binlog and before "run_commit_ordered" in engine
+SET DEBUG_SYNC= "commit_before_get_LOCK_commit_ordered SIGNAL con1_ready WAIT_FOR con1_go";
+--send INSERT INTO ti VALUES (2, REPEAT("x", 4100))
+
+--connection master2
+SET DEBUG_SYNC= "now WAIT_FOR con1_ready";
+--send INSERT INTO tm VALUES (30)
+
+--connection default
+--write_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+wait
+EOF
+
+--source include/kill_mysqld.inc
+--source include/wait_until_disconnected.inc
+
+#
+# Server restarts
+#
+--echo # BINLOG TRUNCATE recovery restart
+--error 1
+--exec $MYSQLD_LAST_CMD  --tc-heuristic-recover=BINLOG_TRUNCATE >> $MYSQLTEST_VARDIR/log/mysqld.1.err 2>&1
+
+--echo # ROLLLBACK heuristic recovery restart
+--error 1
+--exec $MYSQLD_LAST_CMD  --tc-heuristic-recover=ROLLBACK >> $MYSQLTEST_VARDIR/log/mysqld.1.err 2>&1
+
+--echo # NORMAL restart
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+restart:
+EOF
+
+connection default;
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+
+# Check error log for correct messages.
+let $log_error_= `SELECT @@GLOBAL.log_error`;
+if(!$log_error_)
+{
+    # MySQL Server on windows is started with --console and thus
+    # does not know the location of its .err log, use default location
+    let $log_error_ = $MYSQLTEST_VARDIR/log/mysqld.1.err;
+}
+--let SEARCH_FILE=$log_error_
+--let SEARCH_RANGE=-50000
+--let SEARCH_PATTERN=tc-heuristic-recover cannot trim the binary log
+--replace_regex /FOUND [0-9]+/FOUND #/
+--source include/search_pattern_in_file.inc
+
+SELECT COUNT(*) = 0 as 'True' FROM ti;
+# myisam table may require repair (which is not tested here)
+--disable_warnings
+SELECT COUNT(*) <= 1 FROM tm;
+--enable_warnings
+SELECT @@GLOBAL.gtid_current_pos;
+
+--echo # Cleanup
+--replace_result $old_max_binlog_size VALUE_AT_START
+--eval SET @@global.max_binlog_size = $old_max_binlog_size
+DROP TABLE ti, tm;
+--echo End of test

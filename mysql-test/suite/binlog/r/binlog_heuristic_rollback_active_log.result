@@ -1,0 +1,25 @@
+call mtr.add_suppression("Can't init tc log");
+call mtr.add_suppression("Aborting");
+connect master,localhost,root,,;
+connect master1,localhost,root,,;
+connection master;
+RESET MASTER;
+CREATE TABLE t ( f INT ) ENGINE=INNODB;
+INSERT INTO t VALUES (10);
+connection master1;
+SET DEBUG_SYNC= "commit_before_update_end_pos SIGNAL con1_ready WAIT_FOR con1_go";
+INSERT INTO t VALUES (20);
+connection master;
+SET DEBUG_SYNC= "now WAIT_FOR con1_ready";
+# Kill the server
+connection default;
+connection master;
+"One row should be present in table 't'"
+SELECT COUNT(*) FROM t;
+COUNT(*)
+1
+"gtid_binlog_state should be 0-1-2
+SELECT @@GLOBAL.gtid_binlog_state;
+@@GLOBAL.gtid_binlog_state
+0-1-2
+DROP TABLE t;
