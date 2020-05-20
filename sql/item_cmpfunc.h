@@ -418,6 +418,7 @@ public:
   COND *remove_eq_conds(THD *thd, Item::cond_result *cond_value,
                         bool top_level);
   bool count_sargable_conds(void *arg);
+  bool is_predicate_selectivity_covered(void *arg);
   /*
     Specifies which result type the function uses to compare its arguments.
     This method is used in equal field propagation.
@@ -936,6 +937,7 @@ public:
   bool find_not_null_fields(table_map allowed);
   void fix_after_pullout(st_select_lex *new_parent, Item **ref, bool merge);
   bool count_sargable_conds(void *arg);
+  bool is_predicate_selectivity_covered(void *arg);
   void add_key_fields(JOIN *join, KEY_FIELD **key_fields,
                       uint *and_level, table_map usable_tables,
                       SARGABLE_PARAM **sargables);
@@ -2473,6 +2475,7 @@ public:
   bool find_not_null_fields(table_map allowed);
   void fix_after_pullout(st_select_lex *new_parent, Item **ref, bool merge);
   bool count_sargable_conds(void *arg);
+  bool is_predicate_selectivity_covered(void *arg);
   Item *get_copy(THD *thd)
   { return get_item_copy<Item_func_in>(thd, this); }
   Item *build_clone(THD *thd)
@@ -2560,6 +2563,7 @@ public:
     SEL_TREE *ftree= get_full_func_mm_tree_for_args(param, args[0], NULL);
     if (!ftree)
       ftree= Item_func::get_mm_tree(param, cond_ptr);
+
     DBUG_RETURN(ftree);
   }
   CHARSET_INFO *compare_collation() const
@@ -2570,6 +2574,7 @@ public:
     return FALSE;
   }
   bool count_sargable_conds(void *arg);
+  bool is_predicate_selectivity_covered(void *arg);
 };
 
 
@@ -2813,6 +2818,7 @@ public:
   
   Item *get_copy(THD *thd)
   { return get_item_copy<Item_func_like>(thd, this); }
+  bool is_predicate_selectivity_covered(void *arg);
 };
 
 
@@ -3220,7 +3226,10 @@ public:
   uint elements_count() { return equal_items.elements; }
   friend class Item_equal_fields_iterator;
   bool count_sargable_conds(void *arg);
+  bool is_predicate_selectivity_covered(void *arg);
   Item *multiple_equality_transformer(THD *thd, uchar *arg);
+  bool is_covered_by_keys();
+  bool is_covered_by_eits();
   friend class Item_equal_iterator<List_iterator_fast,Item>;
   friend class Item_equal_iterator<List_iterator,Item>;
   friend Item *eliminate_item_equal(THD *thd, COND *cond,

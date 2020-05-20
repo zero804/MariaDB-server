@@ -11358,6 +11358,80 @@ void Field::print_key_value_binary(String *out, const uchar* key, uint32 length)
 }
 
 
+/*
+  @brief Check if number of distinct values for a column are available from keys
+
+  @details
+    If the column is the first component of a key, then number of distinct
+    values are known.
+
+  @retval
+    TRUE     : ndv available from keys
+    FALSE    : otherwise
+*/
+bool Field::is_covered_by_keys()
+{
+  DBUG_ASSERT(table);
+  uint key;
+  key_map::Iterator it(part_of_key);
+  while ((key= it++) != key_map::Iterator::BITMAP_END)
+  {
+    if (is_first_component_of_key(table->key_info + key))
+      return true;
+  }
+    return false;
+}
+
+
+/*
+  @brief Check if number of distinct values are available from EITS
+
+  @retval
+    TRUE     : ndv available from EITS
+    FALSE    : otherwise
+
+*/
+bool Field::is_covered_by_eits()
+{
+  DBUG_ASSERT(table);
+  if (!(table->stats_is_read && is_eits_usable(this)))
+    return false;
+  return true;
+}
+
+
+/*
+  @brief Check if statistics for the field is available
+
+  @retval
+    TRUE    : statistics available
+    FALSE   : otherwise
+
+*/
+bool Field::is_statistics_available()
+{
+  DBUG_ASSERT(table);
+  return is_covered_by_keys() ? TRUE : is_covered_by_eits();
+}
+
+
+/*
+  @brief Checks if the field is the first component of a given key
+
+  @param
+    key      given key
+
+  @retval
+    TRUE     : field is the first component of the given key
+    FALSE    : otherwise
+*/
+bool Field::is_first_component_of_key(KEY *key)
+{
+  DBUG_ASSERT(key->usable_key_parts >= 1);
+  return eq(key->key_part->field);
+}
+
+
 Virtual_column_info* Virtual_column_info::clone(THD *thd)
 {
   Virtual_column_info* dst= new (thd->mem_root) Virtual_column_info(*this);

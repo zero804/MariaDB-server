@@ -2106,6 +2106,27 @@ bool Item_func_between::count_sargable_conds(void *arg)
   return 0;
 }
 
+bool Item_func_between::is_predicate_selectivity_covered(void *arg)
+{
+  if (arguments()[0]->real_item()->type() == Item::FIELD_ITEM)
+  {
+    if (is_sargable_predicate(args[0], args[1], arg) &&
+        is_sargable_predicate(args[0], args[2], arg))
+      return false;
+    return true;
+  }
+
+  for (uint i= 1 ; i < arg_count ; i++)
+  {
+    if (arguments()[i]->real_item()->type() == Item::FIELD_ITEM)
+    {
+      if (!is_sargable_predicate(args[i], args[0], arg))
+        return true;
+    }
+  }
+  return false;
+}
+
 
 void Item_func_between::fix_after_pullout(st_select_lex *new_parent,
                                           Item **ref, bool merge)
@@ -4290,6 +4311,19 @@ bool Item_func_in::count_sargable_conds(void *arg)
 }
 
 
+bool Item_func_in::is_predicate_selectivity_covered(void *arg)
+{
+  if (const_item())
+    return false;
+
+  SAME_FIELD *field_arg= (SAME_FIELD*)arg;
+  if (!field_arg->is_statistics_available)
+    return true;
+  all_items_are_consts(args + 1, arg_count - 1);
+  return false;
+}
+
+
 bool Item_func_in::list_contains_null()
 {
   Item **arg,**arg_end;
@@ -5516,6 +5550,17 @@ bool Item_func_null_predicate::count_sargable_conds(void *arg)
 }
 
 
+bool Item_func_null_predicate::is_predicate_selectivity_covered(void *arg)
+{
+  if (const_item())
+    return false;
+
+  if (is_sargable_predicate(args[0], NULL, arg))
+    return false;
+  return true;
+}
+
+
 longlong Item_func_isnull::val_int()
 {
   DBUG_ASSERT(fixed == 1);
@@ -5596,6 +5641,19 @@ bool Item_bool_func2::count_sargable_conds(void *arg)
   ((SELECT_LEX*) arg)->cond_count++;
   return 0;
 }
+
+
+bool Item_bool_func2::is_predicate_selectivity_covered(void *arg)
+{
+  if (const_item())
+    return false;
+
+  if (is_sargable_predicate(args[0], args[1], arg) ||
+      is_sargable_predicate(args[1], args[0], arg))
+    return false;
+  return true;
+}
+
 
 void Item_func_like::print(String *str, enum_query_type query_type)
 {
@@ -5696,8 +5754,23 @@ SEL_TREE *Item_func_like::get_mm_tree(RANGE_OPT_PARAM *param, Item **cond_ptr)
   bool sargable_pattern= with_sargable_pattern();
   param->thd->mem_root= tmp_root;
   return sargable_pattern ?
-    Item_bool_func2::get_mm_tree(param, cond_ptr) :
-    Item_func::get_mm_tree(param, cond_ptr);
+         Item_bool_func2::get_mm_tree(param, cond_ptr) :
+         Item_func::get_mm_tree(param, cond_ptr);
+}
+
+
+bool Item_func_like::is_predicate_selectivity_covered(void *arg)
+{
+  if (const_item())
+    return false;
+
+  if (with_sargable_pattern())
+  {
+    if (is_sargable_predicate(args[0], args[1], arg) ||
+        is_sargable_predicate(args[1], args[0], arg))
+      return false;
+  }
+  return true;
 }
 
 
@@ -7136,6 +7209,29 @@ bool Item_equal::count_sargable_conds(void *arg)
   uint m= equal_items.elements;
   sel->cond_count+= m*(m-1);
   return 0;
+}
+
+
+bool Item_equal::is_predicate_selectivity_covered(void *arg)
+{
+  /*
+    For equality conditions like tbl1.col = tbl2.col
+
+    We would have an Item_equal(tbl1.col, tbl2.col)
+    (1) If EITS is available then there is no issue,
+        number of distinct values is available
+    (2) If EITS is not available then the col should be the
+        first component of an index.
+  */
+  Item_equal_fields_iterator it(*this);
+  while (it++)
+  {
+    Field *field= it.get_curr_field();
+    if (!(field->is_covered_by_keys() ||  // (1)
+          field->is_covered_by_eits()))   // (2)
+      return true;
+  }
+  return false;
 }
 
 

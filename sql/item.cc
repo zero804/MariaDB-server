@@ -9217,6 +9217,63 @@ Item_field::excl_dep_on_grouping_fields(st_select_lex *sel)
 }
 
 
+/*
+  @brief Checks if a formula of a condition contains the same column
+
+  @details
+    In the function we try to check if a formula of a condition depends
+    (directly or indirectly through equalities inferred from the
+    conjuncted multiple equalities) only on one column.
+
+    Eg:
+      WHERE clause is:
+         t1.a=t2.b and (t1.a > 5 or t2.b < 1);
+
+      the predicate (t1.a > 5 or t2.b < 1) can be resolved with the help of
+      equalities to conclude that it depends on one column.
+
+    This is used mostly for OR conjuncts where we need to make sure
+    that the entire OR conjunct contains only one column, so that we may
+    get accurate estimates.
+
+  @retval
+    TRUE   : the formula does not depend on one column
+    FALSE  : OTHERWISE
+
+*/
+bool Item_field::is_predicate_selectivity_covered(void *arg)
+{
+  SAME_FIELD *same_field_arg= (SAME_FIELD*)arg;
+  /*
+    The same_field_arg is passed as a parameter because when we start walking over
+    the condition tree we don't know which column the predicate will be
+    dependent on, so for the first leaf of the condition tree where we find
+    the Item_field, we set the SAME_FIELD::field to the field of the item
+    and then compare the rest of the predicate with this field
+    (directly or indirectly) for the remaining of the conditional tree
+    traversal.
+  */
+
+  if (same_field_arg->field == NULL)
+  {
+    same_field_arg->field= field;
+    same_field_arg->present_in_equalities= item_equal != NULL;
+    same_field_arg->item_eq= item_equal;
+    same_field_arg->is_statistics_available= field->is_statistics_available();
+    return false;
+  }
+
+  /* Found the same field while traversing the condition tree */
+  if (same_field_arg->field == field)
+    return false;
+
+  if (!same_field_arg->present_in_equalities)
+    return true;
+
+  return !(same_field_arg->item_eq == item_equal);
+}
+
+
 bool Item_direct_view_ref::excl_dep_on_table(table_map tab_map)
 {
   table_map used= used_tables();

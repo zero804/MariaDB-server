@@ -485,6 +485,7 @@ inline uint get_set_pack_length(int elements)
   uint len= (elements + 7) / 8;
   return len > 4 ? 8 : len;
 }
+bool is_eits_usable(Field* field);
 
 
 /**
@@ -1906,6 +1907,11 @@ public:
 
   /* Mark field in read map. Updates also virtual fields */
   void register_field_in_read_map();
+
+  bool is_covered_by_keys();
+  bool is_covered_by_eits();
+  bool is_statistics_available();
+  bool is_first_component_of_key(KEY *key);
 
   virtual Compression_method *compression_method() const { return 0; }
 

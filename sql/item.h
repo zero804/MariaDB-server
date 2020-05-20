@@ -1968,7 +1968,17 @@ public:
   virtual bool count_sargable_conds(void *arg) { return 0; }
   virtual bool limit_index_condition_pushdown_processor(void *arg) { return 0; }
   virtual bool exists2in_processor(void *arg) { return 0; }
+
   virtual bool find_selective_predicates_list_processor(void *arg) { return 0; }
+
+  /*
+    @brief Check if selectivity of a predicate is covered by statistics or not
+
+    @retval
+      FALSE  :  SUCCESS
+      TRUE   :  OTHERWISE
+  */
+  virtual bool is_predicate_selectivity_covered(void *arg) { return FALSE; }
   bool cleanup_is_expensive_cache_processor(void *arg)
   {
     is_expensive_cache= (int8)(-1);
@@ -3576,6 +3586,7 @@ public:
     return field->table->pos_in_table_list->outer_join;
   }
   bool check_index_dependence(void *arg);
+  bool is_predicate_selectivity_covered(void *arg);
   friend class Item_default_value;
   friend class Item_insert_value;
   friend class st_select_lex_unit;

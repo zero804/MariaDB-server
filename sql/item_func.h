@@ -469,6 +469,7 @@ public:
     else
       set_handler(&type_handler_ulong);
   }
+  bool is_predicate_selectivity_covered(void *arg) { return TRUE; }
 };
 
 
