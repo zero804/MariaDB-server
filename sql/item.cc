@@ -3907,13 +3907,19 @@ int Item_param::save_in_field(Field *field, bool no_conversions)
   case NULL_VALUE:
     return set_field_to_null_with_conversions(field, no_conversions);
   case DEFAULT_VALUE:
-    return field->save_in_field_default_value(field->table->pos_in_table_list->
+    return field->save_in_field_default_value((field->table &&
+                                               field->table->pos_in_table_list)?
+                                              field->table->pos_in_table_list->
                                               top_table() !=
-                                              field->table->pos_in_table_list);
+                                              field->table->pos_in_table_list:
+                                              FALSE);
   case IGNORE_VALUE:
-    return field->save_in_field_ignore_value(field->table->pos_in_table_list->
+    return field->save_in_field_ignore_value((field->table &&
+                                               field->table->pos_in_table_list)?
+                                             field->table->pos_in_table_list->
                                              top_table() !=
-                                             field->table->pos_in_table_list);
+                                             field->table->pos_in_table_list:
+                                             FALSE);
   case NO_VALUE:
     DBUG_ASSERT(0); // Should not be possible
     return true;

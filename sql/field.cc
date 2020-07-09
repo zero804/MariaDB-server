@@ -11183,6 +11183,16 @@ bool Field::save_in_field_default_value(bool view_error_processing)
 {
   THD *thd= table->in_use;
 
+  if ( // table is not opened properly
+      table == NULL || table->pos_in_table_list == NULL ||
+      table->pos_in_table_list->select_lex == NULL ||
+      // we are in subquery/derived/CTE
+      !table->pos_in_table_list->top_table()->select_lex->is_top_level_select())
+  {
+    DBUG_ASSERT(0); // shoud not happened
+    my_error(ER_INVALID_DEFAULT_PARAM, MYF(0));
+    return false;
+  }
   if (flags & NO_DEFAULT_VALUE_FLAG &&
       real_type() != MYSQL_TYPE_ENUM)
   {
@@ -11222,12 +11232,29 @@ bool Field::save_in_field_default_value(bool view_error_processing)
 bool Field::save_in_field_ignore_value(bool view_error_processing)
 {
   enum_sql_command com= table->in_use->lex->sql_command;
+
+  if ( // table is not opened properly
+      table == NULL || table->pos_in_table_list == NULL ||
+      table->pos_in_table_list->select_lex == NULL ||
+      // we are in subquery/derived/CTE
+      !table->pos_in_table_list->top_table()->select_lex->is_top_level_select())
+  {
+    DBUG_ASSERT(0); // shoud not happened
+    my_error(ER_INVALID_DEFAULT_PARAM, MYF(0));
+    return false;
+  }
   // All insert-like commands
   if (com == SQLCOM_INSERT || com == SQLCOM_REPLACE ||
       com == SQLCOM_INSERT_SELECT || com == SQLCOM_REPLACE_SELECT ||
       com == SQLCOM_LOAD)
     return save_in_field_default_value(view_error_processing);
-  return 0; // ignore
+  if (com == SQLCOM_UPDATE || com == SQLCOM_UPDATE_MULTI)
+    return 0; // ignore
+
+  // unexpected command
+  DBUG_ASSERT(0); // shoud not happened
+  my_error(ER_INVALID_DEFAULT_PARAM, MYF(0));
+  return false;
 }
 
 

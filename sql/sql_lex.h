@@ -1119,6 +1119,10 @@ public:
   { 
     return (select_number == 1) && !is_part_of_union();
   }
+  bool is_top_level_select()
+  {
+    return master_unit()->get_master() == NULL;
+  }
   bool optimize_unflattened_subqueries(bool const_only);
   /* Set the EXPLAIN type for this subquery. */
   void set_explain_type(bool on_the_fly);
