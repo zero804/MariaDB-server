@@ -8285,6 +8285,7 @@ fill_record_n_invoke_before_triggers(THD *thd, TABLE *table,
   @param values        values to fill with
   @param ignore_errors TRUE if we should ignore errors
   @param use_value     forces usage of value of the items instead of result
+  @param evaluable     parameres shoud be evaluable
 
   @details
     fill_record() may set table->auto_increment_field_not_null and a
@@ -8298,7 +8299,7 @@ fill_record_n_invoke_before_triggers(THD *thd, TABLE *table,
 
 bool
 fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
-            bool ignore_errors, bool use_value)
+            bool ignore_errors, bool use_value, bool evaluable)
 {
   List_iterator_fast<Item> v(values);
   List<TABLE> tbl_list;
@@ -8344,6 +8345,9 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
                           ER_THD(thd, ER_WARNING_NON_DEFAULT_VALUE_FOR_VIRTUAL_COLUMN),
                           field->field_name, table->s->table_name.str);
     }
+
+    if(evaluable && value->check_is_evaluable_expression_or_error())
+      goto err;
 
     if (use_value)
       value->save_val(field);
@@ -8396,7 +8400,7 @@ fill_record_n_invoke_before_triggers(THD *thd, TABLE *table, Field **ptr,
   bool result;
   Table_triggers_list *triggers= table->triggers;
 
-  result= fill_record(thd, table, ptr, values, ignore_errors, FALSE);
+  result= fill_record(thd, table, ptr, values, ignore_errors, FALSE, FALSE);
 
   if (!result && triggers && *ptr)
     result= triggers->process_triggers(thd, event, TRG_ACTION_BEFORE, TRUE) ||

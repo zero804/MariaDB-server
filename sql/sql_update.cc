@@ -1795,6 +1795,9 @@ int multi_update::prepare(List<Item> &not_used_values,
   while ((item= (Item_field *) field_it++))
   {
     Item *value= value_it++;
+    if (value->associate_with_target_field(thd, item))
+      DBUG_RETURN(1);
+
     uint offset= item->field->table->pos_in_table_list->shared;
     fields_for_table[offset]->push_back(item, thd->mem_root);
     values_for_table[offset]->push_back(value, thd->mem_root);
@@ -1927,7 +1930,7 @@ bool
 multi_update::initialize_tables(JOIN *join)
 {
   TABLE_LIST *table_ref;
-  DBUG_ENTER("initialize_tables");
+  DBUG_ENTER("multi_update::initialize_tables");
 
   if ((thd->variables.option_bits & OPTION_SAFE_UPDATES) && error_if_full_join(join))
     DBUG_RETURN(1);
@@ -2245,7 +2248,7 @@ int multi_update::send_data(List<Item> &not_used_values)
       /* Store regular updated fields in the row. */
       fill_record(thd, tmp_table,
                   tmp_table->field + 1 + unupdated_check_opt_tables.elements,
-                  *values_for_table[offset], TRUE, FALSE);
+                  *values_for_table[offset], TRUE, FALSE, FALSE);
 
       /* Write row, ignoring duplicated updates to a row */
       error= tmp_table->file->ha_write_tmp_row(tmp_table->record[0]);

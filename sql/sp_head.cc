@@ -418,6 +418,9 @@ sp_eval_expr(THD *thd, Field *result_field, Item **expr_item_ptr)
   if (!(expr_item= sp_prepare_func_item(thd, expr_item_ptr)))
     goto error;
 
+  if (expr_item->check_is_evaluable_expression_or_error())
+    goto error;
+
   /*
     Set THD flags to emit warnings/errors in case of overflow/type errors
     during saving the item into the field.
@@ -428,6 +431,7 @@ sp_eval_expr(THD *thd, Field *result_field, Item **expr_item_ptr)
   thd->count_cuted_fields= CHECK_FIELD_ERROR_FOR_NULL;
   thd->abort_on_warning= thd->is_strict_mode();
   thd->transaction.stmt.modified_non_trans_table= FALSE;
+
 
   /* Save the value in the field. Convert the value if needed. */
 

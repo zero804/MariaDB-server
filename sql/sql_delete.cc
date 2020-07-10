@@ -939,7 +939,7 @@ multi_delete::initialize_tables(JOIN *join)
 {
   TABLE_LIST *walk;
   Unique **tempfiles_ptr;
-  DBUG_ENTER("initialize_tables");
+  DBUG_ENTER("multi_delete::initialize_tables");
 
   if ((thd->variables.option_bits & OPTION_SAFE_UPDATES) && error_if_full_join(join))
     DBUG_RETURN(1);

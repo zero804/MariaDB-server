@@ -46,6 +46,7 @@ const String my_null_string("NULL", 4, default_charset_info);
 const String my_default_string("DEFAULT", 7, default_charset_info);
 
 static int save_field_in_field(Field *, bool *, Field *, bool);
+static Field *make_default_field(THD *thd, Item_field *field_arg);
 
 
 /**
@@ -81,6 +82,17 @@ void item_init(void)
 {
   item_func_sleep_init();
   uuid_short_init();
+}
+
+
+void Item::raise_error_not_evaluable()
+{
+  String tmp;
+  this->print(&tmp, QT_ORDINARY);
+  // TODO-10.5: add an error message to errmsg-utf8.txt
+  my_printf_error(ER_UNKNOWN_ERROR,
+                  "'%s' is not allowed in this context", MYF(0), tmp.ptr());
+  DBUG_ASSERT(0); // cannot be happen before 10.5
 }
 
 
@@ -3447,6 +3459,7 @@ Item_param::Item_param(THD *thd, uint pos_in_query_arg):
   Item_basic_value(thd),
   Rewritable_query_parameter(pos_in_query_arg, 1),
   Type_handler_hybrid_field_type(MYSQL_TYPE_VARCHAR),
+  associated_field(NULL), def_field(NULL),
   state(NO_VALUE),
   /* Don't pretend to be a literal unless value for this item is set. */
   item_type(PARAM_ITEM),
@@ -3519,6 +3532,8 @@ void Item_param::sync_clones()
     c->str_value= str_value;
     c->str_value_ptr= str_value_ptr;
     c->collation= collation;
+    // CTE can not have UPDATE/INSERT etc inside
+    DBUG_ASSERT(associated_field == NULL);
   }
 }
 
@@ -3881,6 +3896,28 @@ void Item_param::reset()
 }
 
 
+int Item_param::assign_default(Field *field)
+{
+  DBUG_ASSERT(associated_field);
+
+  if (associated_field->field->flags & NO_DEFAULT_VALUE_FLAG)
+  {
+    my_error(ER_NO_DEFAULT_FOR_FIELD, MYF(0),
+             associated_field->field->field_name);
+    return 1;
+  }
+
+  if (!def_field)
+    def_field= make_default_field(field->table->in_use, associated_field);
+  if (!def_field)
+    return 1;
+
+  if (def_field->default_value)
+    def_field->set_default();
+  return field_conv(field, def_field);
+}
+
+
 int Item_param::save_in_field(Field *field, bool no_conversions)
 {
   field->set_notnull();
@@ -3907,6 +3944,8 @@ int Item_param::save_in_field(Field *field, bool no_conversions)
   case NULL_VALUE:
     return set_field_to_null_with_conversions(field, no_conversions);
   case DEFAULT_VALUE:
+    if (associated_field)
+      return assign_default(field);
     return field->save_in_field_default_value((field->table &&
                                                field->table->pos_in_table_list)?
                                               field->table->pos_in_table_list->
@@ -3914,6 +3953,23 @@ int Item_param::save_in_field(Field *field, bool no_conversions)
                                               field->table->pos_in_table_list:
                                               FALSE);
   case IGNORE_VALUE:
+    if (associated_field)
+    {
+      switch (find_ignore_reaction(field->table->in_use))
+      {
+        case IGNORE_MEANS_DEFAULT:
+          DBUG_ASSERT(0); // impossible now, but fully working code if needed
+          return assign_default(field);
+        case IGNORE_MEANS_FIELD_VALUE:
+          associated_field->save_val(field);
+          return false;
+        default:
+         ; // fall through to error
+      }
+      DBUG_ASSERT(0); //impossible
+      my_error(ER_INVALID_DEFAULT_PARAM, MYF(0));
+      return true;
+    }
     return field->save_in_field_ignore_value((field->table &&
                                                field->table->pos_in_table_list)?
                                              field->table->pos_in_table_list->
@@ -3929,12 +3985,38 @@ int Item_param::save_in_field(Field *field, bool no_conversions)
 }
 
 
+bool Item_param::is_evaluable_expression() const
+{
+  switch (state) {
+
+  case INT_VALUE:
+  case REAL_VALUE:
+  case STRING_VALUE:
+  case TIME_VALUE:
+  case LONG_DATA_VALUE:
+  case DECIMAL_VALUE:
+  case NULL_VALUE:
+    return true;
+  case NO_VALUE:
+    return true; // Not assigned yet, so we don't know
+  case IGNORE_VALUE:
+  case DEFAULT_VALUE:
+    break;
+  }
+  return false;
+}
+
+
 void Item_param::invalid_default_param() const
 {
   my_message(ER_INVALID_DEFAULT_PARAM,
              ER_THD(current_thd, ER_INVALID_DEFAULT_PARAM), MYF(0));
 }
 
+void Item_param::raise_error_not_evaluable()
+{
+  invalid_default_param();
+}
 
 bool Item_param::get_date(MYSQL_TIME *res, ulonglong fuzzydate)
 {
@@ -8911,9 +8993,6 @@ bool Item_default_value::eq(const Item *item, bool binary_cmp) const
 
 bool Item_default_value::fix_fields(THD *thd, Item **items)
 {
-  Item *real_arg;
-  Item_field *field_arg;
-  Field *def_field;
   DBUG_ASSERT(fixed == 0);
 
   if (!arg)
@@ -8922,6 +9001,20 @@ bool Item_default_value::fix_fields(THD *thd, Item **items)
     return FALSE;
   }
 
+  return tie_field(thd);
+}
+
+/**
+  Create and point on field which returns default value for this field
+
+  @retval TRUE - error
+  @retval FALSE - success
+*/
+
+bool Item_default_value::tie_field(THD *thd)
+{
+  Item *real_arg;
+  Item_field *field_arg;
   /*
     DEFAULT() do not need table field so should not ask handler to bring
     field value (mark column for read)
@@ -8944,23 +9037,40 @@ bool Item_default_value::fix_fields(THD *thd, Item **items)
   }
 
   field_arg= (Item_field *)real_arg;
-  if ((field_arg->field->flags & NO_DEFAULT_VALUE_FLAG))
+  if (check_default() && (field_arg->field->flags & NO_DEFAULT_VALUE_FLAG))
   {
     my_error(ER_NO_DEFAULT_FOR_FIELD, MYF(0), field_arg->field->field_name);
     goto error;
   }
-  if (!(def_field= (Field*) thd->alloc(field_arg->field->size_of())))
+  if (!(cached_field= make_default_field(thd, field_arg)))
     goto error;
-  cached_field= def_field;
+
+  set_field(cached_field);
+  return FALSE;
+
+error:
+  context->process_error(thd);
+  return TRUE;
+}
+
+
+static Field *make_default_field(THD *thd, Item_field *field_arg)
+{
+  Field *def_field;
+
+  if (!(def_field= (Field*) thd->alloc(field_arg->field->size_of())))
+    return NULL;
+
   memcpy((void *)def_field, (void *)field_arg->field,
          field_arg->field->size_of());
+
   def_field->reset_fields();
   // If non-constant default value expression
   if (def_field->default_value && def_field->default_value->flags)
   {
     uchar *newptr= (uchar*) thd->alloc(1+def_field->pack_length());
     if (!newptr)
-      goto error;
+      return NULL;
     /*
       Even if DEFAULT() do not read tables fields, the default value
       expression can do it.
@@ -8974,18 +9084,26 @@ bool Item_default_value::fix_fields(THD *thd, Item **items)
     def_field->move_field_offset((my_ptrdiff_t)
                                  (def_field->table->s->default_values -
                                   def_field->table->record[0]));
-  set_field(def_field);
-  return FALSE;
+  return def_field;
+}
 
-error:
-  context->process_error(thd);
-  return TRUE;
+bool Item_default_value::associate_with_target_field(THD *thd,
+                                                     Item_field *field)
+{
+  associated= true;
+  arg= field;
+  return tie_field(thd);
 }
 
 void Item_default_value::cleanup()
 {
   delete cached_field;                        // Free cached blob data
   cached_field= 0;
+  if (associated)
+  {
+    arg= NULL;
+    associated= false;
+  }
   Item_field::cleanup();
 }
 
@@ -9108,8 +9226,54 @@ void Item_ignore_value::print(String *str, enum_query_type query_type)
     str->append(STRING_WITH_LEN("ignore"));
 }
 
+
+bool Item_ignore_value::associate_with_target_field(THD *thd,
+                                                    Item_field *field)
+{
+  bitmap_set_bit(field->field->table->read_set, field->field->field_index);
+  return Item_default_value::associate_with_target_field(thd, field);
+}
+
+
 int Item_ignore_value::save_in_field(Field *field_arg, bool no_conversions)
 {
+  if (arg)
+  {
+    switch (find_ignore_reaction(field->table->in_use))
+    {
+      case IGNORE_MEANS_DEFAULT:
+        DBUG_ASSERT(0); // impossible now, but fully working code if needed
+        /*
+          save default value
+          Note: (((Field*)(arg()->real_item()) is Item_field* (checked in
+          tie_field().
+        */
+        if ((((Item_field*)(arg->real_item()))->field->flags &
+             NO_DEFAULT_VALUE_FLAG))
+        {
+          my_error(ER_NO_DEFAULT_FOR_FIELD, MYF(0),
+                   ((Item_field*)(arg->real_item()))->field->field_name);
+          return true;
+        }
+        calculate();
+        return Item_field::save_in_field(field_arg, no_conversions);
+      case IGNORE_MEANS_FIELD_VALUE:
+        // checked on tie_field
+        DBUG_ASSERT(arg->real_item()->type() == FIELD_ITEM);
+        /*
+          save original field (Item::save_in_field is not applicable because
+          result_field for the referenced field set to this temporary table).
+        */
+        arg->save_val(field_arg);
+        return false;
+      default:
+         ; // fall through to error
+    }
+    DBUG_ASSERT(0); //impossible
+    my_error(ER_INVALID_DEFAULT_PARAM, MYF(0));
+    return true;
+  }
+
   return field_arg->save_in_field_ignore_value(context->error_processor ==
                                                &view_error_processor);
 }

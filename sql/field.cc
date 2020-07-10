@@ -1166,6 +1166,28 @@ static inline double safe_substract(ulonglong a, ulonglong b)
   return (a > b)? double(a - b) : -double(b - a);
 }
 
+/**
+   Find which reaction should be for IGNORE value.
+*/
+
+ignore_value_reaction find_ignore_reaction(THD *thd)
+{
+  enum_sql_command com= thd->lex->sql_command;
+  // All insert-like commands
+  if (com == SQLCOM_INSERT || com == SQLCOM_REPLACE ||
+      com == SQLCOM_INSERT_SELECT || com == SQLCOM_REPLACE_SELECT ||
+      com == SQLCOM_LOAD)
+  {
+    return IGNORE_MEANS_DEFAULT;
+  }
+  // Update commands commands
+  if (com == SQLCOM_UPDATE || com == SQLCOM_UPDATE_MULTI)
+  {
+    return IGNORE_MEANS_FIELD_VALUE;
+  }
+  return IGNORE_MEANS_ERROR;
+}
+
 
 /**
   @brief
@@ -11231,8 +11253,6 @@ bool Field::save_in_field_default_value(bool view_error_processing)
 
 bool Field::save_in_field_ignore_value(bool view_error_processing)
 {
-  enum_sql_command com= table->in_use->lex->sql_command;
-
   if ( // table is not opened properly
       table == NULL || table->pos_in_table_list == NULL ||
       table->pos_in_table_list->select_lex == NULL ||
@@ -11243,13 +11263,15 @@ bool Field::save_in_field_ignore_value(bool view_error_processing)
     my_error(ER_INVALID_DEFAULT_PARAM, MYF(0));
     return false;
   }
-  // All insert-like commands
-  if (com == SQLCOM_INSERT || com == SQLCOM_REPLACE ||
-      com == SQLCOM_INSERT_SELECT || com == SQLCOM_REPLACE_SELECT ||
-      com == SQLCOM_LOAD)
-    return save_in_field_default_value(view_error_processing);
-  if (com == SQLCOM_UPDATE || com == SQLCOM_UPDATE_MULTI)
-    return 0; // ignore
+  switch (find_ignore_reaction(table->in_use))
+  {
+    case IGNORE_MEANS_DEFAULT:
+      return save_in_field_default_value(view_error_processing);
+    case IGNORE_MEANS_FIELD_VALUE:
+      return 0; // ignore
+    default:
+      ; // fall through to error
+  }
 
   // unexpected command
   DBUG_ASSERT(0); // shoud not happened

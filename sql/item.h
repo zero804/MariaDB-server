@@ -706,6 +706,8 @@ protected:
                                          bool fixed_length,
                                          bool set_blob_packlength);
   Field *create_tmp_field(bool group, TABLE *table, uint convert_int_length);
+  virtual void raise_error_not_evaluable();
+
   /* Helper methods, to get an Item value from another Item */
   double val_real_from_item(Item *item)
   {
@@ -1308,6 +1310,24 @@ public:
       INSERT INTO t1 (vcol) VALUES (NULL)  -> ok
   */
   virtual bool vcol_assignment_allowed_value() const { return false; }
+  /*
+    Determines if the Item is an evaluable expression, that is
+    it can return a value, so we can call methods val_xxx(), get_date(), etc.
+    Most items are evaluable expressions.
+    Examples of non-evaluable expressions:
+    - Item_contextually_typed_value_specification (handling DEFAULT and IGNORE)
+    - Item_type_param bound to DEFAULT and IGNORE
+    We cannot call the mentioned methods for these Items,
+    their method implementations typically have DBUG_ASSERT(0).
+  */
+  virtual bool is_evaluable_expression() const { return true; }
+  bool check_is_evaluable_expression_or_error()
+  {
+    if (is_evaluable_expression())
+      return false; // Ok
+    raise_error_not_evaluable();
+    return true;    // Error
+  }
   /* cloning of constant items (0 if it is not const) */
   virtual Item *clone_item(THD *thd) { return 0; }
   virtual Item* build_clone(THD *thd, MEM_ROOT *mem_root) { return get_copy(thd, mem_root); }
@@ -1404,6 +1424,7 @@ public:
                      LOWEST_PRECEDENCE);
   }
   virtual void print(String *str, enum_query_type query_type);
+
   void print_item_w_name(String *str, enum_query_type query_type);
   void print_value(String *str);
 
@@ -2076,6 +2097,14 @@ public:
   void clear_extraction_flag()
   {
     marker &= ~EXTRACTION_MASK;
+  }
+
+  virtual bool associate_with_target_field(THD *thd __attribute__((unused)),
+                                           Item_field *field
+                                             __attribute__((unused)))
+  {
+    DBUG_ASSERT(fixed);
+    return false;
   }
 };
 
@@ -2985,6 +3014,8 @@ class Item_param :public Item_basic_value,
                   public Rewritable_query_parameter,
                   public Type_handler_hybrid_field_type
 {
+  Item_field *associated_field;
+  Field *def_field;
   /*
     NO_VALUE is a special value meaning that the parameter has not been
     assigned yet. Item_param::state is assigned to NO_VALUE in constructor
@@ -3084,6 +3115,8 @@ public:
       return false;
     }
   };
+
+  bool is_evaluable_expression() const;
 
   /*
     Used for bulk protocol only.
@@ -3242,6 +3275,21 @@ public:
   virtual const Send_field *get_out_param_info() const;
 
   virtual void make_field(THD *thd, Send_field *field);
+
+  virtual void raise_error_not_evaluable();
+
+  virtual void cleanup()
+  {
+    associated_field= NULL;
+    def_field= NULL;
+    Item_basic_value::cleanup();
+  }
+  virtual bool associate_with_target_field(THD *thd, Item_field *field)
+  {
+    associated_field= field;
+    return false;
+  }
+  int assign_default(Field *field);
 
 private:
   Send_field *m_out_param_info;
@@ -5381,22 +5429,25 @@ public:
 
 class Item_default_value : public Item_field
 {
+protected:
   void calculate();
+  bool associated;
+  virtual bool check_default() { return true; }
 public:
   Item *arg;
   Field *cached_field;
   Item_default_value(THD *thd, Name_resolution_context *context_arg)
     :Item_field(thd, context_arg, (const char *)NULL, (const char *)NULL,
                (const char *)NULL),
-    arg(NULL), cached_field(NULL) {}
+    associated(false), arg(NULL), cached_field(NULL) {}
   Item_default_value(THD *thd, Name_resolution_context *context_arg, Item *a)
     :Item_field(thd, context_arg, (const char *)NULL, (const char *)NULL,
                 (const char *)NULL),
-    arg(a), cached_field(NULL) {}
+    associated(false), arg(a), cached_field(NULL) {}
   Item_default_value(THD *thd, Name_resolution_context *context_arg, Field *a)
     :Item_field(thd, context_arg, (const char *)NULL, (const char *)NULL,
                 (const char *)NULL),
-    arg(NULL),cached_field(NULL) {}
+    associated(false), arg(NULL),cached_field(NULL) {}
   enum Type type() const { return DEFAULT_VALUE_ITEM; }
   bool vcol_assignment_allowed_value() const { return arg == NULL; }
   bool eq(const Item *item, bool binary_cmp) const;
@@ -5436,6 +5487,9 @@ public:
   }
 
   Item *transform(THD *thd, Item_transformer transformer, uchar *args);
+
+  virtual bool associate_with_target_field(THD *thd, Item_field *field);
+  bool tie_field(THD *thd);
 };
 
 /**
@@ -5447,6 +5501,8 @@ public:
 
 class Item_ignore_value : public Item_default_value
 {
+protected:
+  virtual bool check_default() { return false; }
 public:
   Item_ignore_value(THD *thd, Name_resolution_context *context_arg)
     :Item_default_value(thd, context_arg)
@@ -5466,6 +5522,7 @@ public:
   my_decimal *val_decimal(my_decimal *decimal_value);
   bool get_date(MYSQL_TIME *ltime,ulonglong fuzzydate);
   bool send(Protocol *protocol, String *buffer);
+  virtual bool associate_with_target_field(THD *thd, Item_field *field);
 };
 
 

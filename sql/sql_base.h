@@ -176,7 +176,7 @@ void unfix_fields(List<Item> &items);
 bool fill_record(THD * thd, TABLE *table_arg, List<Item> &fields,
                  List<Item> &values, bool ignore_errors, bool update);
 bool fill_record(THD *thd, TABLE *table, Field **field, List<Item> &values,
-                 bool ignore_errors, bool use_value);
+                 bool ignore_errors, bool use_value, bool evaluable);
 
 Field *
 find_field_in_tables(THD *thd, Item_ident *item,
