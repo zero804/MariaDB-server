@@ -1316,7 +1316,7 @@ public:
     Most items are evaluable expressions.
     Examples of non-evaluable expressions:
     - Item_contextually_typed_value_specification (handling DEFAULT and IGNORE)
-    - Item_type_param bound to DEFAULT and IGNORE
+    - Item_param bound to DEFAULT and IGNORE
     We cannot call the mentioned methods for these Items,
     their method implementations typically have DBUG_ASSERT(0).
   */
