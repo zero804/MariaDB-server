@@ -676,7 +676,8 @@ THD::THD(my_thread_id id, bool is_wsrep_applier)
    m_stmt_da(&main_da),
    tdc_hash_pins(0),
    xid_hash_pins(0),
-   m_tmp_tables_locked(false)
+   m_tmp_tables_locked(false),
+   async_state()
 #ifdef HAVE_REPLICATION
    ,
    current_linfo(0),
@@ -4903,6 +4904,41 @@ void reset_thd(MYSQL_THD thd)
   thd->free_items();
   free_root(thd->mem_root, MYF(MY_KEEP_PREALLOC));
 }
+
+extern "C" MYSQL_THD thd_increment_pending_ops(void)
+{
+  THD *thd = current_thd;
+  if (!thd)
+    return NULL;
+  thd->async_state.inc_pending_ops();
+  return thd;
+}
+
+extern "C" int
+thd_pending_ops(MYSQL_THD thd)
+{
+  return thd->async_state.pending_ops();
+}
+
+extern "C" void thd_decrement_pending_ops(MYSQL_THD thd)
+{
+  DBUG_ASSERT(thd);
+  if (thd->async_state.dec_pending_ops() == 0)
+  {
+    switch(thd->async_state.m_state)
+    {
+    case thd_async_state::enum_async_state::SUSPEND:
+      DBUG_ASSERT(thd->scheduler->thd_resume);
+      thd->scheduler->thd_resume(thd);
+      break;
+    case thd_async_state::enum_async_state::NONE:
+      break;
+    default:
+      DBUG_ASSERT(0);
+    }
+  }
+}
+
 
 unsigned long long thd_get_query_id(const MYSQL_THD thd)
 {

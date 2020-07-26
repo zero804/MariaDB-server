@@ -125,6 +125,11 @@ void TP_pool_win::add(TP_connection *c)
   }
 }
 
+void TP_pool_win::resume(TP_connection* c)
+{
+  SubmitThreadpoolWork(((TP_connection_win*)c)->work);
+}
+
 #define CHECK_ALLOC_ERROR(op)                                                 \
   do                                                                          \
   {                                                                           \
@@ -438,3 +443,4 @@ TP_connection *TP_pool_win::new_connection(CONNECT *connect)
   }
   return c;
 }
+

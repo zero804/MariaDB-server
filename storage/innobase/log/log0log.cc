@@ -1082,6 +1082,17 @@ bool log_write_lock_own()
 }
 #endif
 
+
+/* Execute callback , once lsn is flushed or written to log. */
+void log_register_wait(lsn_t lsn, bool flush, void (*f)(void *), void *par)
+{
+  completion_callback c{f, par};
+  if (flush)
+    flush_lock.register_wait(lsn,c);
+  else
+    write_lock.register_wait(lsn,c);
+}
+
 /** Ensure that the log has been written to the log file up to a given
 log entry (such as that of a transaction commit). Start a new write, or
 wait and check if an already running write is covering the request.
@@ -1392,7 +1403,7 @@ bool log_checkpoint()
 
 	log_mutex_exit();
 
-	log_write_up_to(flush_lsn, true, true);
+	log_write_up_to(flush_lsn,true,true);
 
 	log_mutex_enter();
 

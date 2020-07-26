@@ -627,8 +627,13 @@ net_real_write(NET *net,const uchar *packet, size_t len)
   my_bool net_blocking = vio_is_blocking(net->vio);
   DBUG_ENTER("net_real_write");
 
-#if defined(MYSQL_SERVER) && defined(USE_QUERY_CACHE)
-  query_cache_insert(net->thd, (char*) packet, len, net->pkt_nr);
+#if defined(MYSQL_SERVER)
+  THD *thd= (THD *)net->thd;
+#if defined(USE_QUERY_CACHE)
+  query_cache_insert(thd, (char*) packet, len, net->pkt_nr);
+#endif
+  if (likely(thd))
+    thd->async_state.wait_for_pending_ops();
 #endif
 
   if (unlikely(net->error == 2))

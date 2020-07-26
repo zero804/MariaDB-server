@@ -23,6 +23,7 @@ The transaction
 
 Created 3/26/1996 Heikki Tuuri
 *******************************************************/
+#define MYSQL_SERVER
 
 #include "trx0trx.h"
 
@@ -1185,34 +1186,104 @@ trx_finalize_for_fts(
 	trx->fts_trx = NULL;
 }
 
-/**********************************************************************//**
-If required, flushes the log to disk based on the value of
-innodb_flush_log_at_trx_commit. */
-static
-void
-trx_flush_log_if_needed_low(
-/*========================*/
-	lsn_t	lsn)	/*!< in: lsn up to which logs are to be
-			flushed. */
+extern "C" MYSQL_THD thd_increment_pending_ops();
+extern "C" void thd_decrement_pending_ops(MYSQL_THD);
+extern "C" int thd_pending_ops(MYSQL_THD );
+
+static Atomic_counter<int> n_pending_log_write;
+
+static bool need_to_flush_log()
 {
-	bool	flush = srv_file_flush_method != SRV_NOSYNC;
+  if (srv_file_flush_method != SRV_NOSYNC)
+    return false;
 
-	switch (srv_flush_log_at_trx_commit) {
-	case 3:
-	case 2:
-		/* Write the log but do not flush it to disk */
-		flush = false;
-		/* fall through */
-	case 1:
-		/* Write the log and optionally flush it to disk */
-		log_write_up_to(lsn, flush);
-		return;
-	case 0:
-		/* Do nothing */
-		return;
-	}
+  switch (srv_flush_log_at_trx_commit)
+  {
+  case 3:
+  case 2:
+    /* Write the log but do not flush it to disk */
+    return false;
+    /* fall through */
+  case 1:
+    return true;
+  case 0:
+    return false;
+  }
+  ut_error;
+  return false;
+}
+static void background_log_write(void *)
+{
+  bool flush= need_to_flush_log();
 
-	ut_error;
+  lsn_t old_lsn= 0;
+  do
+  {
+    log_mutex_enter();
+    auto lsn= log_sys.get_lsn();
+    log_mutex_exit();
+    n_pending_log_write= 0;
+    if (lsn == old_lsn)
+      break;
+    log_write_up_to(lsn, flush);
+    old_lsn= lsn;
+  } while (n_pending_log_write);
+}
+
+static tpool::task_group bck_write_group(1);
+static tpool::task background_log_write_task(background_log_write, 0,
+                                             &bck_write_group);
+
+static void initiate_background_log_write_if_needed()
+{
+  if (!n_pending_log_write++)
+    srv_thread_pool->submit_task(&background_log_write_task);
+}
+
+extern "C" int thd_pending_ops(MYSQL_THD thd);
+extern void log_register_wait(lsn_t lsn, bool flush, void (*f)(void *),
+                              void *par);
+
+/*
+ If required, intiates flushes the log to disk based on the value of
+ innodb_flush_log_at_trx_commit.
+
+ It can increment pending THD operations, and current connection
+ might not write response to the client, until the pending operation
+ is finished.
+
+ @param lsn_t lsn
+ @params trx_state
+*/
+static void trx_flush_log_if_needed_low(lsn_t lsn, trx_state_t trx_state)
+{
+  if (!srv_flush_log_at_trx_commit)
+    return;
+
+  if (log_sys.get_flushed_lsn() > lsn)
+    return;
+  bool flush= need_to_flush_log();
+
+  if (trx_state == TRX_STATE_PREPARED)
+  {
+    /* XA, which is used with binlog as well.
+    Be conservative, use synchronous wait.*/
+    log_write_up_to(lsn, flush);
+    return;
+  }
+
+  initiate_background_log_write_if_needed();
+
+  MYSQL_THD thd= thd_increment_pending_ops();
+  if (!thd)
+  {
+    /* This might be dictionary recalculations.*/
+    log_write_up_to(lsn, flush);
+    return;
+  }
+
+  log_register_wait(lsn, flush, (void (*)(void *)) thd_decrement_pending_ops,
+                    thd);
 }
 
 /**********************************************************************//**
@@ -1227,7 +1298,7 @@ trx_flush_log_if_needed(
 	trx_t*	trx)	/*!< in/out: transaction */
 {
 	trx->op_info = "flushing log";
-	trx_flush_log_if_needed_low(lsn);
+	trx_flush_log_if_needed_low(lsn,trx->state);
 	trx->op_info = "";
 }
 

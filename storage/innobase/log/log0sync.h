@@ -18,6 +18,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include <atomic>
 #include <thread>
 #include <log0types.h>
+#include <vector>
 
 struct group_commit_waiter_t;
 
@@ -52,6 +53,12 @@ Operations supported on this semaphore
 
 5. set_pending_value()
 */
+struct completion_callback
+{
+  void (*m_callback)(void*);
+  void* m_param;
+};
+
 class group_commit_lock
 {
   using value_type = lsn_t;
@@ -63,6 +70,8 @@ class group_commit_lock
   std::atomic<value_type> m_pending_value;
   bool m_lock;
   group_commit_waiter_t* m_waiters_list;
+  std::vector<std::pair<value_type,completion_callback>> m_pending_callbacks;
+
 public:
   group_commit_lock();
   enum lock_return_code
@@ -71,6 +80,7 @@ public:
     EXPIRED
   };
   lock_return_code acquire(value_type num);
+  void register_wait(value_type num, completion_callback& callback);
   void release(value_type num);
   value_type value() const;
   value_type pending() const;

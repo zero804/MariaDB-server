@@ -40,6 +40,7 @@ struct scheduler_functions
   void (*thd_wait_end)(THD *thd);
   void (*post_kill_notification)(THD *thd);
   void (*end)(void);
+  void (*thd_resume)(THD* thd);
 };
 
 

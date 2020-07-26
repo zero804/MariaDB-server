@@ -77,6 +77,7 @@ Note that if write operation is very fast, a) or b) can be fine as alternative.
 #include <log0types.h>
 #include "log0sync.h"
 #include <mysql/service_thd_wait.h>
+#include <sql_class.h>
 /**
   Helper class , used in group commit lock.
 
@@ -249,6 +250,9 @@ group_commit_lock::lock_return_code group_commit_lock::acquire(value_type num)
 
 void group_commit_lock::release(value_type num)
 {
+  completion_callback callbacks[1024];
+  size_t callback_count = 0;
+
   std::unique_lock<std::mutex> lk(m_mtx);
   m_lock = false;
 
@@ -291,6 +295,23 @@ void group_commit_lock::release(value_type num)
       prev= cur;
     }
   }
+  for (auto &c : m_pending_callbacks)
+  {
+    if (c.first <= num)
+    {
+      if (callback_count < array_elements(callbacks))
+        callbacks[callback_count++]= c.second;
+      else
+        c.second.m_callback(c.second.m_param);
+    }
+  }
+
+  auto it= std::remove_if(
+      m_pending_callbacks.begin(), m_pending_callbacks.end(),
+      [num](const std::pair<value_type,completion_callback> &c) { return c.first <= num; });
+
+  m_pending_callbacks.erase(it, m_pending_callbacks.end());
+
   lk.unlock();
 
   for (cur= wakeup_list; cur; cur= next)
@@ -298,6 +319,21 @@ void group_commit_lock::release(value_type num)
     next= cur->m_next;
     cur->m_sema.wake();
   }
+
+  for (size_t i= 0; i < callback_count; i++)
+    callbacks[i].m_callback(callbacks[i].m_param);
+}
+
+void group_commit_lock::register_wait(lsn_t lsn, completion_callback &c)
+{
+  std::unique_lock<std::mutex> lk(m_mtx);
+  if (lsn <= value())
+  {
+    lk.unlock();
+    c.m_callback(c.m_param);
+    return;
+  }
+  m_pending_callbacks.push_back({ lsn,c });
 }
 
 #ifndef DBUG_OFF
