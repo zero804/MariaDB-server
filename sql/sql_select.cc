@@ -1200,7 +1200,7 @@ JOIN::prepare(TABLE_LIST *tables_init, COND *conds_init, uint og_num,
 
     while ((select_el= select_it++))
     {
-      if (select_el->with_sum_func())
+      if (select_el->with_sum_func)
         found_sum_func_elem= true;
       if (select_el->with_field)
         found_field_elem= true;
@@ -1367,7 +1367,7 @@ JOIN::prepare(TABLE_LIST *tables_init, COND *conds_init, uint og_num,
             item->max_length)))
         real_order= TRUE;
 
-      if ((item->with_sum_func() && item->type() != Item::SUM_FUNC_ITEM) ||
+      if ((item->with_sum_func && item->type() != Item::SUM_FUNC_ITEM) ||
           item->with_window_func)
         item->split_sum_func(thd, ref_ptrs, all_fields, SPLIT_SUM_SELECT);
     }
@@ -1375,7 +1375,7 @@ JOIN::prepare(TABLE_LIST *tables_init, COND *conds_init, uint og_num,
       order= NULL;
   }
 
-  if (having && having->with_sum_func())
+  if (having && having->with_sum_func)
     having->split_sum_func2(thd, ref_ptrs, all_fields,
                             &having, SPLIT_SUM_SKIP_REGISTERED);
   if (select_lex->inner_sum_func_list)
@@ -2796,7 +2796,7 @@ int JOIN::optimize_stage2()
     elements may be lost during further having
     condition transformation in JOIN::exec.
   */
-  if (having && const_table_map && !having->with_sum_func())
+  if (having && const_table_map && !having->with_sum_func)
   {
     having->update_used_tables();
     having= having->remove_eq_conds(thd, &select_lex->having_value, true);
@@ -14076,7 +14076,7 @@ static void update_depend_map_for_order(JOIN *join, ORDER *order)
     order->used= 0;
     // Not item_sum(), RAND() and no reference to table outside of sub select
     if (!(order->depend_map & (OUTER_REF_TABLE_BIT | RAND_TABLE_BIT))
-        && !order->item[0]->with_sum_func() &&
+        && !order->item[0]->with_sum_func &&
         join->join_tab)
     {
       for (JOIN_TAB **tab=join->map2table;
@@ -14183,7 +14183,7 @@ remove_const(JOIN *join,ORDER *first_order, COND *cond,
   for (order=first_order; order ; order=order->next)
   {
     table_map order_tables=order->item[0]->used_tables();
-    if (order->item[0]->with_sum_func() ||
+    if (order->item[0]->with_sum_func ||
         /*
           If the outer table of an outer join is const (either by itself or
           after applying WHERE condition), grouping on a field from such a
@@ -14330,7 +14330,7 @@ ORDER *simple_remove_const(ORDER *order, COND *where)
   ORDER *first= NULL, *prev= NULL;
   for (; order; order= order->next)
   {
-    DBUG_ASSERT(!order->item[0]->with_sum_func()); // should never happen
+    DBUG_ASSERT(!order->item[0]->with_sum_func); // should never happen
     if (!const_expression_in_where(where, order->item[0]))
     {
       if (!first)
@@ -18432,7 +18432,7 @@ bool Create_tmp_table::add_fields(THD *thd,
     }
     if (not_all_columns)
     {
-      if (item->with_sum_func() && type != Item::SUM_FUNC_ITEM)
+      if (item->with_sum_func && type != Item::SUM_FUNC_ITEM)
       {
         if (item->used_tables() & OUTER_REF_TABLE_BIT)
           item->update_used_tables();
@@ -24472,7 +24472,7 @@ int setup_order(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables,
       return 1;
     }
 
-    if (!(*order->item)->with_sum_func())
+    if (!(*order->item)->with_sum_func)
       continue;
 
     /*
@@ -24543,7 +24543,7 @@ setup_group(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables,
                            all_fields, true, true, from_window_spec))
       return 1;
     (*ord->item)->marker= UNDEF_POS;		/* Mark found */
-    if ((*ord->item)->with_sum_func() && context_analysis_place == IN_GROUP_BY)
+    if ((*ord->item)->with_sum_func && context_analysis_place == IN_GROUP_BY)
     {
       my_error(ER_WRONG_GROUP_FIELD, MYF(0), (*ord->item)->full_name());
       return 1;
@@ -24556,7 +24556,7 @@ setup_group(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables,
         my_error(ER_WINDOW_FUNCTION_IN_WINDOW_SPEC, MYF(0));
       return 1;
     }
-    if (from_window_spec && (*ord->item)->with_sum_func() &&
+    if (from_window_spec && (*ord->item)->with_sum_func &&
         (*ord->item)->type() != Item::SUM_FUNC_ITEM)
       (*ord->item)->split_sum_func(thd, ref_pointer_array,
                                    all_fields, SPLIT_SUM_SELECT);
@@ -24706,7 +24706,7 @@ create_distinct_group(THD *thd, Ref_ptr_array ref_pointer_array,
   li.rewind();
   while ((item=li++))
   {
-    if (!item->const_item() && !item->with_sum_func() && !item->marker)
+    if (!item->const_item() && !item->with_sum_func && !item->marker)
     {
       /* 
         Don't put duplicate columns from the SELECT list into the 
@@ -24803,11 +24803,9 @@ count_field_types(SELECT_LEX *select_lex, TMP_TABLE_PARAM *param,
     }
     else
     {
-      With_sum_func_cache *cache= field->get_with_sum_func_cache();
       param->func_count++;
-      // "field" can point to Item_std_field, so "cache" can be NULL here.
-      if (reset_with_sum_func && cache)
-        cache->reset_with_sum_func();
+      if (reset_with_sum_func)
+	field->with_sum_func=0;
     }
   }
 }
@@ -25211,7 +25209,7 @@ setup_copy_fields(THD *thd, TMP_TABLE_PARAM *param,
 	      real_pos->real_type() == Item::SUBSELECT_ITEM ||
 	      real_pos->type() == Item::CACHE_ITEM ||
 	      real_pos->type() == Item::COND_ITEM) &&
-	     !real_pos->with_sum_func())
+	     !real_pos->with_sum_func)
     {						// Save for send fields
       LEX_CSTRING real_name= pos->name;
       pos= real_pos;
@@ -25420,7 +25418,7 @@ change_to_use_tmp_fields(THD *thd, Ref_ptr_array ref_pointer_array,
   for (uint i= 0; (item= it++); i++)
   {
     Field *field;
-    if ((item->with_sum_func() && item->type() != Item::SUM_FUNC_ITEM) ||
+    if ((item->with_sum_func && item->type() != Item::SUM_FUNC_ITEM) ||
        item->with_window_func)
       item_field= item;
     else if (item->type() == Item::FIELD_ITEM)
@@ -25949,7 +25947,7 @@ bool JOIN::rollup_init()
         Marking the expression item as 'with_sum_func' will ensure this.
       */ 
       if (changed)
-        item->get_with_sum_func_cache()->set_with_sum_func();
+        item->with_sum_func= 1;
     }
   }
   return 0;
