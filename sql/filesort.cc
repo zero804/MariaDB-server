@@ -1108,7 +1108,7 @@ Type_handler_string_result::make_sort_key_part(uchar *to, Item *item,
                                             Sort_param *param) const
 {
   CHARSET_INFO *cs= item->collation.collation;
-  bool maybe_null= item->maybe_null;
+  bool maybe_null= item->maybe_null();
 
   if (maybe_null)
     *to++= 1;
@@ -1178,7 +1178,7 @@ Type_handler_int_result::make_sort_key_part(uchar *to, Item *item,
                                             Sort_param *param) const
 {
   longlong value= item->val_int_result();
-  make_sort_key_longlong(to, item->maybe_null, item->null_value,
+  make_sort_key_longlong(to, item->maybe_null(), item->null_value,
                          item->unsigned_flag, value);
 }
 
@@ -1194,13 +1194,13 @@ Type_handler_temporal_result::make_sort_key_part(uchar *to, Item *item,
   static const Temporal::Options opt(TIME_INVALID_DATES, TIME_FRAC_NONE);
   if (item->get_date_result(current_thd, &buf, opt))
   {
-    DBUG_ASSERT(item->maybe_null);
+    DBUG_ASSERT(item->maybe_null());
     DBUG_ASSERT(item->null_value);
-    make_sort_key_longlong(to, item->maybe_null, true,
+    make_sort_key_longlong(to, item->maybe_null(), true,
                            item->unsigned_flag, 0);
   }
   else
-    make_sort_key_longlong(to, item->maybe_null, false,
+    make_sort_key_longlong(to, item->maybe_null(), false,
                            item->unsigned_flag, pack_time(&buf));
 }
 
@@ -1216,11 +1216,11 @@ Type_handler_timestamp_common::make_sort_key_part(uchar *to, Item *item,
   if (native.is_null() || native.is_zero_datetime())
   {
     // NULL or '0000-00-00 00:00:00'
-    bzero(to, item->maybe_null ? binlen + 1 : binlen);
+    bzero(to, item->maybe_null() ? binlen + 1 : binlen);
   }
   else
   {
-    if (item->maybe_null)
+    if (item->maybe_null())
       *to++= 1;
     if (native.length() != binlen)
     {
@@ -1304,7 +1304,7 @@ Type_handler_decimal_result::make_sort_key_part(uchar *to, Item *item,
                                             Sort_param *param) const
 {
   my_decimal dec_buf, *dec_val= item->val_decimal_result(&dec_buf);
-  if (item->maybe_null)
+  if (item->maybe_null())
   {
     if (item->null_value)
     {
@@ -1324,7 +1324,7 @@ Type_handler_real_result::make_sort_key_part(uchar *to, Item *item,
                                              Sort_param *param) const
 {
   double value= item->val_result();
-  if (item->maybe_null)
+  if (item->maybe_null())
   {
     if (item->null_value)
     {
@@ -2256,7 +2256,7 @@ sortlength(THD *thd, Sort_keys *sort_keys, bool *allow_packing_for_sortkeys)
                                             thd->variables.max_sort_length));
       }
 
-      if ((sortorder->maybe_null= sortorder->item->maybe_null))
+      if ((sortorder->maybe_null= sortorder->item->maybe_null()))
         nullable_cols++;				// Place for NULL marker
     }
     set_if_smaller(sortorder->length, thd->variables.max_sort_length);
@@ -2554,7 +2554,7 @@ Type_handler_string_result::make_packed_sort_key_part(uchar *to, Item *item,
                                             Sort_param *param) const
 {
   CHARSET_INFO *cs= item->collation.collation;
-  bool maybe_null= item->maybe_null;
+  bool maybe_null= item->maybe_null();
 
   if (maybe_null)
     *to++= 1;
@@ -2593,7 +2593,7 @@ Type_handler_int_result::make_packed_sort_key_part(uchar *to, Item *item,
                                             Sort_param *param) const
 {
   longlong value= item->val_int_result();
-  return make_packed_sort_key_longlong(to, item->maybe_null,
+  return make_packed_sort_key_longlong(to, item->maybe_null(),
                                        item->null_value, item->unsigned_flag,
                                        value, sort_field);
 }
@@ -2605,7 +2605,7 @@ Type_handler_decimal_result::make_packed_sort_key_part(uchar *to, Item *item,
                                             Sort_param *param) const
 {
   my_decimal dec_buf, *dec_val= item->val_decimal_result(&dec_buf);
-  if (item->maybe_null)
+  if (item->maybe_null())
   {
     if (item->null_value)
     {
@@ -2627,7 +2627,7 @@ Type_handler_real_result::make_packed_sort_key_part(uchar *to, Item *item,
                                             Sort_param *param) const
 {
   double value= item->val_result();
-  if (item->maybe_null)
+  if (item->maybe_null())
   {
     if (item->null_value)
     {
@@ -2653,12 +2653,12 @@ Type_handler_temporal_result::make_packed_sort_key_part(uchar *to, Item *item,
   static const Temporal::Options opt(TIME_INVALID_DATES, TIME_FRAC_NONE);
   if (item->get_date_result(current_thd, &buf, opt))
   {
-    DBUG_ASSERT(item->maybe_null);
+    DBUG_ASSERT(item->maybe_null());
     DBUG_ASSERT(item->null_value);
-    return make_packed_sort_key_longlong(to, item->maybe_null, true,
+    return make_packed_sort_key_longlong(to, item->maybe_null(), true,
                                          item->unsigned_flag, 0, sort_field);
   }
-  return make_packed_sort_key_longlong(to, item->maybe_null, false,
+  return make_packed_sort_key_longlong(to, item->maybe_null(), false,
                                        item->unsigned_flag, pack_time(&buf),
                                        sort_field);
 }
@@ -2675,7 +2675,7 @@ Type_handler_timestamp_common::make_packed_sort_key_part(uchar *to, Item *item,
   if (native.is_null() || native.is_zero_datetime())
   {
     // NULL or '0000-00-00 00:00:00'
-    if (item->maybe_null)
+    if (item->maybe_null())
     {
       *to++=0;
       return 0;
@@ -2688,7 +2688,7 @@ Type_handler_timestamp_common::make_packed_sort_key_part(uchar *to, Item *item,
   }
   else
   {
-    if (item->maybe_null)
+    if (item->maybe_null())
       *to++= 1;
     if (native.length() != binlen)
     {
@@ -3011,7 +3011,7 @@ static uint make_sortkey(Sort_param *param, uchar *to)
       sort_field->item->type_handler()->make_sort_key_part(to,
                                                            sort_field->item,
                                                            sort_field, param);
-      if ((maybe_null= sort_field->item->maybe_null))
+      if ((maybe_null= sort_field->item->maybe_null()))
         to++;
     }
 
@@ -3064,7 +3064,7 @@ static uint make_packed_sortkey(Sort_param *param, uchar *to)
       length= item->type_handler()->make_packed_sort_key_part(to, item,
                                                               sort_field,
                                                               param);
-      if ((maybe_null= sort_field->item->maybe_null))
+      if ((maybe_null= sort_field->item->maybe_null()))
         to++;
     }
     to+= length;
