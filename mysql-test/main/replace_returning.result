@@ -33,9 +33,12 @@ EXECUTE stmt;
 id1	(SELECT id2 FROM t2 WHERE val2='b')
 1	2
 DEALLOCATE PREPARE stmt;
+REPLACE INTO t1 (id1, val1) VALUES (1, 'g') RETURNING t1.*;
+id1	val1
+1	g
 SELECT * FROM t1;
 id1	val1
-1	f
+1	g
 TRUNCATE TABLE t1;
 #
 # Multiple values in one replace statement...RETURNING
@@ -69,10 +72,14 @@ id1	(SELECT id2 FROM t2 WHERE val2='b')
 1	2
 2	2
 DEALLOCATE PREPARE stmt;
+REPLACE INTO t1 VALUES (1,'u'),(2,'v') RETURNING t1.*;
+id1	val1
+1	u
+2	v
 SELECT * FROM t1;
 id1	val1
-1	s
-2	t
+1	u
+2	v
 TRUNCATE TABLE t1;
 #
 # REPLACE...SET...RETURNING
@@ -101,9 +108,12 @@ EXECUTE stmt;
 id1	(SELECT id2 FROM t2 WHERE val2='b')
 3	2
 DEALLOCATE PREPARE stmt;
+REPLACE INTO t1 SET id1=1, val1 = 'o' RETURNING t1.*;
+id1	val1
+1	o
 SELECT * FROM t1;
 id1	val1
-1	i
+1	o
 2	j
 3	k
 #
@@ -113,7 +123,7 @@ TRUNCATE TABLE t2;
 REPLACE INTO t2(id2,val2) SELECT * FROM t1;
 REPLACE INTO t2 SELECT * FROM t1 WHERE id1=1 RETURNING *;
 id2	val2
-1	i
+1	o
 REPLACE INTO t2 SELECT * FROM t1 WHERE id1=2 RETURNING id2+id2 AS total,
 id2&&id2, id2|id2,UPPER(val2),f(id2);
 total	id2&&id2	id2|id2	UPPER(val2)	f(id2)
@@ -122,7 +132,7 @@ REPLACE INTO t2 SELECT * FROM t1 WHERE id1=3 RETURNING (SELECT
 GROUP_CONCAT(val1) FROM t1 WHERE id1=1);
 (SELECT
 GROUP_CONCAT(val1) FROM t1 WHERE id1=1)
-i
+o
 REPLACE INTO t2 SELECT * FROM t1 WHERE id1=1 RETURNING (SELECT
 GROUP_CONCAT(val1) FROM t1 GROUP BY id1 HAVING id1=id1+1);
 (SELECT
@@ -144,9 +154,12 @@ FROM t2 WHERE id2=0);
 (SELECT id1+id2
 FROM t2 WHERE id2=0)
 NULL
+REPLACE INTO t2 SELECT * FROM t1 WHERE id1=2 RETURNING t2.*;
+id2	val2
+2	j
 SELECT * FROM t2;
 id2	val2
-1	i
+1	o
 2	j
 3	k
 DROP TABLE t1;

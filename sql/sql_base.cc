@@ -7959,7 +7959,7 @@ insert_fields(THD *thd, Name_resolution_context *context, const char *db_name,
               bool any_privileges, uint *hidden_bit_fields)
 {
   Field_iterator_table_ref field_iterator;
-  bool found;
+  bool found, is_insert_or_replace_returning= false;
   char name_buff[SAFE_NAME_LEN+1];
   DBUG_ENTER("insert_fields");
   DBUG_PRINT("arena", ("stmt arena: %p",thd->stmt_arena));
@@ -7978,13 +7978,31 @@ insert_fields(THD *thd, Name_resolution_context *context, const char *db_name,
 
   found= FALSE;
 
+  if ((thd->lex->sql_command == SQLCOM_INSERT_SELECT ||
+       thd->lex->sql_command == SQLCOM_REPLACE_SELECT ||
+       thd->lex->sql_command == SQLCOM_INSERT ||
+       thd->lex->sql_command == SQLCOM_REPLACE) &&
+       thd->lex->has_returning())
+      is_insert_or_replace_returning= true;
+
   /*
     If table names are qualified, then loop over all tables used in the query,
     else treat natural joins as leaves and do not iterate over their underlying
     tables.
+    Also, When we have INSERT/REPLACE...RETURNING and have qualified asterisk,
+    table_name is not NULL and context->table_list is either NULL or has
+    incorrect reference because context->table_list has tables from the
+    FROM clause.
+    context->table_list has incorrect reference (has table from the FROM clause
+    instead of table we are inserting into) for
+    INSERT/REPLACE...SELECT...RETURNING because we have a FROM clause from the
+    SELECT statement. For INSERT/REPLACE...RETURNING it is NULL because
+    there is no FROM clause.
   */
-  for (TABLE_LIST *tables= (table_name ? context->table_list :
-                            context->first_name_resolution_table);
+  for (TABLE_LIST *tables= (table_name ? (is_insert_or_replace_returning ?
+                                          context->first_name_resolution_table :
+                                          context->table_list) :
+                            (context->first_name_resolution_table));
        tables;
        tables= (table_name ? tables->next_local :
                 tables->next_name_resolution_table)
