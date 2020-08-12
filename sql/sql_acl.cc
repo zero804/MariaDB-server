@@ -452,15 +452,15 @@ public:
   void print_grant(String *str)
   {
     str->append(STRING_WITH_LEN("GRANT PROXY ON '"));
-    str->append(proxied_user);
+    str->append(proxied_user, strlen(proxied_user));
     str->append(STRING_WITH_LEN("'@'"));
     if (proxied_host.hostname)
       str->append(proxied_host.hostname, strlen(proxied_host.hostname));
     str->append(STRING_WITH_LEN("' TO '"));
-    str->append(user);
+    str->append(user, strlen(user));
     str->append(STRING_WITH_LEN("'@'"));
     if (host.hostname)
-      str->append(host.hostname);
+      str->append(host.hostname, strlen(host.hostname));
     str->append(STRING_WITH_LEN("'"));
     if (with_grant)
       str->append(STRING_WITH_LEN(" WITH GRANT OPTION"));
@@ -1757,7 +1757,7 @@ class User_table_json: public User_table
       if (value_len)
         json.append(',');
       json.append('"');
-      json.append(key);
+      json.append(key, strlen(key));
       json.append(STRING_WITH_LEN("\":"));
       if (string)
         json.append('"');
@@ -9082,7 +9082,7 @@ bool mysql_show_create_user(THD *thd, LEX_USER *lex_user)
     goto end;
   }
 
-  result.append("CREATE USER ");
+  result.append(STRING_WITH_LEN("CREATE USER "));
   append_identifier(thd, &result, username, strlen(username));
   add_user_parameters(thd, &result, acl_user, false);
 

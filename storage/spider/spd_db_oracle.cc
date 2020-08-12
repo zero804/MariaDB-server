@@ -3054,6 +3054,7 @@ int spider_db_oracle_util::open_item_func(
   int error_num;
   Item *item, **item_list = item_func->arguments();
   Field *field;
+  LEX_CSTRING func_name_c;
   uint roop_count, item_count = item_func->argument_count(), start_item = 0;
   const char *func_name = SPIDER_SQL_NULL_CHAR_STR,
     *separator_str = SPIDER_SQL_NULL_CHAR_STR,
@@ -3082,8 +3083,9 @@ int spider_db_oracle_util::open_item_func(
       last_str_length = SPIDER_SQL_IS_NOT_NULL_LEN;
       break;
     case Item_func::UNKNOWN_FUNC:
-      func_name = (char*) item_func->func_name();
-      func_name_length = strlen(func_name);
+      func_name_c =      item_func->func_name_cstring();
+      func_name =        func_name_c.str;
+      func_name_length = func_name_c.lengthstr;
       DBUG_PRINT("info",("spider func_name = %s", func_name));
       DBUG_PRINT("info",("spider func_name_length = %d", func_name_length));
       if (func_name_length == 1 &&
@@ -3282,11 +3284,13 @@ int spider_db_oracle_util::open_item_func(
             Item_func *ifunc = (Item_func *) item;
             if (ifunc->functype() == Item_func::UNKNOWN_FUNC)
             {
+              LEX_CSTRING child_func_name_c;
               const char *child_func_name;
               int child_func_name_length;
               DBUG_PRINT("info",("spider child is UNKNOWN_FUNC"));
-              child_func_name = (char*) ifunc->func_name();
-              child_func_name_length = strlen(child_func_name);
+              child_func_name_c =      ifunc->func_name_cstring();
+              child_func_name =        child_func_name_c.str;
+              child_func_name_length = child_func_name_c.length;
               DBUG_PRINT("info",("spider child func_name is %s", child_func_name));
               if (
                 child_func_name_length == 10 &&
@@ -3320,11 +3324,13 @@ int spider_db_oracle_util::open_item_func(
             Item_func *ifunc = (Item_func *) item;
             if (ifunc->functype() == Item_func::UNKNOWN_FUNC)
             {
+              LEX_CSTRING child_func_name_c;
               const char *child_func_name;
               int child_func_name_length;
               DBUG_PRINT("info",("spider child is UNKNOWN_FUNC"));
-              child_func_name = (char*) ifunc->func_name();
-              child_func_name_length = strlen(child_func_name);
+              child_func_name_c =      ifunc->func_name_cstring();
+              child_func_name =        child_func_name_c.str;
+              child_func_name_length = child_func_name_c.length;
               DBUG_PRINT("info",("spider child func_name is %s", child_func_name));
               if (
                 child_func_name_length == 10 &&
@@ -3454,11 +3460,13 @@ int spider_db_oracle_util::open_item_func(
             Item_func *ifunc = (Item_func *) item;
             if (ifunc->functype() == Item_func::UNKNOWN_FUNC)
             {
+              LEX_CSTRING child_func_name_c;
               const char *child_func_name;
               int child_func_name_length;
               DBUG_PRINT("info",("spider child is UNKNOWN_FUNC"));
-              child_func_name = (char*) ifunc->func_name();
-              child_func_name_length = strlen(child_func_name);
+              child_func_name_c =      ifunc->func_name_cstring();
+              child_func_name =        child_func_name_c.str;
+              child_func_name_length = child_func_name_c.length;
               DBUG_PRINT("info",("spider child func_name is %s", child_func_name));
               if (
                 child_func_name_length == 10 &&
@@ -3508,11 +3516,13 @@ int spider_db_oracle_util::open_item_func(
             Item_func *ifunc = (Item_func *) item;
             if (ifunc->functype() == Item_func::UNKNOWN_FUNC)
             {
+              LEX_CSTRING child_func_name_c;
               const char *child_func_name;
               int child_func_name_length;
               DBUG_PRINT("info",("spider child is UNKNOWN_FUNC"));
-              child_func_name = (char*) ifunc->func_name();
-              child_func_name_length = strlen(child_func_name);
+              child_func_name_c =      ifunc->func_name_cstring();
+              child_func_name =        child_func_name_c.str;
+              child_func_name_length = child_func_name_c.length;
               DBUG_PRINT("info",("spider child func_name is %s", child_func_name));
               if (
                 child_func_name_length == 10 &&
@@ -3549,11 +3559,13 @@ int spider_db_oracle_util::open_item_func(
             Item_func *ifunc = (Item_func *) item;
             if (ifunc->functype() == Item_func::UNKNOWN_FUNC)
             {
+              LEX_CSTRING child_func_name_c;
               const char *child_func_name;
               int child_func_name_length;
               DBUG_PRINT("info",("spider child is UNKNOWN_FUNC"));
-              child_func_name = (char*) ifunc->func_name();
-              child_func_name_length = strlen(child_func_name);
+              child_func_name_c =      ifunc->func_name_cstring();
+              child_func_name =        child_func_name_c.str;
+              child_func_name_length = child_func_name_c.length;
               DBUG_PRINT("info",("spider child func_name is %s", child_func_name));
               if (
                 child_func_name_length == 10 &&
@@ -3588,11 +3600,13 @@ int spider_db_oracle_util::open_item_func(
             Item_func *ifunc = (Item_func *) item;
             if (ifunc->functype() == Item_func::UNKNOWN_FUNC)
             {
+              LEX_CSTRING child_func_name_c;
               const char *child_func_name;
               int child_func_name_length;
               DBUG_PRINT("info",("spider child is UNKNOWN_FUNC"));
-              child_func_name = (char*) ifunc->func_name();
-              child_func_name_length = strlen(child_func_name);
+              child_func_name_c =      ifunc->func_name_cstring();
+              child_func_name =        child_func_name_c.str;
+              child_func_name_length = child_func_name_c.length;
               DBUG_PRINT("info",("spider child func_name is %s", child_func_name));
               if (
                 child_func_name_length == 10 &&
@@ -3643,11 +3657,13 @@ int spider_db_oracle_util::open_item_func(
             Item_func *ifunc = (Item_func *) item;
             if (ifunc->functype() == Item_func::UNKNOWN_FUNC)
             {
+              LEX_CSTRING child_func_name_c;
               const char *child_func_name;
               int child_func_name_length;
               DBUG_PRINT("info",("spider child is UNKNOWN_FUNC"));
-              child_func_name = (char*) ifunc->func_name();
-              child_func_name_length = strlen(child_func_name);
+              child_func_name_c =      ifunc->func_name_cstring();
+              child_func_name =        child_func_name_c.str;
+              child_func_name_length = child_func_name_c.length;
               DBUG_PRINT("info",("spider child func_name is %s", child_func_name));
               if (
                 child_func_name_length == 10 &&
@@ -3878,11 +3894,13 @@ int spider_db_oracle_util::open_item_func(
           Item_func *ifunc = (Item_func *) item;
           if (ifunc->functype() == Item_func::UNKNOWN_FUNC)
           {
+            LEX_CSTRING child_func_name_c;
             const char *child_func_name;
             int child_func_name_length;
             DBUG_PRINT("info",("spider child is UNKNOWN_FUNC"));
-            child_func_name = (char*) ifunc->func_name();
-            child_func_name_length = strlen(child_func_name);
+            child_func_name_c =      ifunc->func_name_cstring();
+            child_func_name =        child_func_name_c.str;
+            child_func_name_length = child_func_name_c.length;
             DBUG_PRINT("info",("spider child func_name is %s", child_func_name));
             if (
               child_func_name_length == 10 &&
@@ -3968,8 +3986,9 @@ int spider_db_oracle_util::open_item_func(
       }
       if (str)
       {
-        func_name = (char*) item_func->func_name();
-        func_name_length = strlen(func_name);
+        func_name_c =      item_func->func_name_cstring();
+        func_name =        func_name_c.str;
+        func_name_length = func_name_c.lengthstr;
         if (str->reserve(func_name_length + SPIDER_SQL_SPACE_LEN))
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
         str->q_append(func_name, func_name_length);
@@ -3979,8 +3998,9 @@ int spider_db_oracle_util::open_item_func(
     case Item_func::NEG_FUNC:
       if (str)
       {
-        func_name = (char*) item_func->func_name();
-        func_name_length = strlen(func_name);
+        func_name_c =      item_func->func_name_cstring();
+        func_name =        func_name_c.str;
+        func_name_length = func_name_c.lengthstr;
         if (str->reserve(func_name_length + SPIDER_SQL_SPACE_LEN))
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
         str->q_append(func_name, func_name_length);
@@ -4013,8 +4033,9 @@ int spider_db_oracle_util::open_item_func(
         separator_str = SPIDER_SQL_AND_STR;
         separator_str_length = SPIDER_SQL_AND_LEN;
       } else {
-        func_name = (char*) item_func->func_name();
-        func_name_length = strlen(func_name);
+        func_name_c =      item_func->func_name_cstring();
+        func_name =        func_name_c.str;
+        func_name_length = func_name_c.lengthstr;
         separator_str = SPIDER_SQL_AND_STR;
         separator_str_length = SPIDER_SQL_AND_LEN;
       }
@@ -4027,8 +4048,9 @@ int spider_db_oracle_util::open_item_func(
         DBUG_RETURN(ER_SPIDER_COND_SKIP_NUM);
       if (str)
       {
-        func_name = (char*) item_func->func_name();
-        func_name_length = strlen(func_name);
+        func_name_c =      item_func->func_name_cstring();
+        func_name =        func_name_c.str;
+        func_name_length = func_name_c.lengthstr;
         DBUG_PRINT("info",("spider func_name = %s", func_name));
         DBUG_PRINT("info",("spider func_name_length = %d", func_name_length));
         if (str->reserve(func_name_length + SPIDER_SQL_OPEN_PAREN_LEN))
@@ -4106,8 +4128,9 @@ int spider_db_oracle_util::open_item_func(
     case Item_func::SP_OVERLAPS_FUNC:
       if (str)
       {
-        func_name = (char*) item_func->func_name();
-        func_name_length = strlen(func_name);
+        func_name_c =      item_func->func_name_cstring();
+        func_name =        func_name_c.str;
+        func_name_length = func_name_c.lengthstr;
         DBUG_PRINT("info",("spider func_name = %s", func_name));
         DBUG_PRINT("info",("spider func_name_length = %d", func_name_length));
         if (str->reserve(
@@ -4138,8 +4161,9 @@ int spider_db_oracle_util::open_item_func(
     case Item_func::GT_FUNC:
       if (str)
       {
-        func_name = (char*) item_func->func_name();
-        func_name_length = strlen(func_name);
+        func_name_c =      item_func->func_name_cstring();
+        func_name =        func_name_c.str;
+        func_name_length = func_name_c.lengthstr;
       }
       break;
     case Item_func::LIKE_FUNC:
@@ -4153,8 +4177,9 @@ int spider_db_oracle_util::open_item_func(
          }
          else
          {
-            func_name = (char*)item_func->func_name();
-            func_name_length = strlen(func_name);
+           func_name_c =      item_func->func_name_cstring();
+           func_name =        func_name_c.str;
+           func_name_length = func_name_c.lengthstr;
          }
       }
       break;
@@ -4169,8 +4194,9 @@ int spider_db_oracle_util::open_item_func(
         DBUG_RETURN(ER_SPIDER_COND_SKIP_NUM);
       if (str)
       {
-        func_name = (char*) item_func->func_name();
-        func_name_length = strlen(func_name);
+        func_name_c =      item_func->func_name_cstring();
+        func_name =        func_name_c.str;
+        func_name_length = func_name_c.lengthstr;
       }
       break;
   }
@@ -4296,8 +4322,9 @@ int spider_db_oracle_util::open_item_sum_func(
     case Item_sum::MIN_FUNC:
     case Item_sum::MAX_FUNC:
       {
-        const char *func_name = item_sum->func_name();
-        uint func_name_length = strlen(func_name);
+        LEX_CSTRING func_name_c= item_sum->func_name_cstring();
+        const char *func_name = func_name_c.str;
+        uint func_name_length = func_name_c.length;
         Item *item, **args = item_sum->get_args();
         if (str)
         {
@@ -4357,10 +4384,11 @@ size_t spider_db_oracle_util::escape_string(
   size_t from_length,
   CHARSET_INFO *access_charset
 ) {
+  my_bool overflow;
   DBUG_ENTER("spider_db_oracle::escape_string");
   DBUG_PRINT("info",("spider this=%p", this));
   DBUG_RETURN(escape_quotes_for_mysql(access_charset, to, 0,
-    from, from_length));
+    from, from_length, &overflow));
 }
 
 int spider_db_oracle_util::append_escaped_util(
