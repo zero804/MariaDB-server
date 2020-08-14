@@ -4729,7 +4729,7 @@ class Func_handler_bit_or_int_to_ulonglong:
 public:
   Longlong_null to_longlong_null(Item_handled_func *item) const
   {
-    DBUG_ASSERT(item->is_fixed());
+    DBUG_ASSERT(item->fixed());
     Longlong_null a= item->arguments()[0]->to_longlong_null();
     return a.is_null() ? a : a | item->arguments()[1]->to_longlong_null();
   }
@@ -4742,7 +4742,7 @@ class Func_handler_bit_or_dec_to_ulonglong:
 public:
   Longlong_null to_longlong_null(Item_handled_func *item) const
   {
-    DBUG_ASSERT(item->is_fixed());
+    DBUG_ASSERT(item->fixed());
     VDec a(item->arguments()[0]);
     return a.is_null() ? Longlong_null() :
       a.to_xlonglong_null() | VDec(item->arguments()[1]).to_xlonglong_null();
@@ -4764,7 +4764,7 @@ class Func_handler_bit_and_int_to_ulonglong:
 public:
   Longlong_null to_longlong_null(Item_handled_func *item) const
   {
-    DBUG_ASSERT(item->is_fixed());
+    DBUG_ASSERT(item->fixed());
     Longlong_null a= item->arguments()[0]->to_longlong_null();
     return a.is_null() ? a : a & item->arguments()[1]->to_longlong_null();
   }
@@ -4777,7 +4777,7 @@ class Func_handler_bit_and_dec_to_ulonglong:
 public:
   Longlong_null to_longlong_null(Item_handled_func *item) const
   {
-    DBUG_ASSERT(item->is_fixed());
+    DBUG_ASSERT(item->fixed());
     VDec a(item->arguments()[0]);
     return a.is_null() ?  Longlong_null() :
       a.to_xlonglong_null() & VDec(item->arguments()[1]).to_xlonglong_null();
