@@ -430,7 +430,7 @@ private:
   /** Stores shared auto_increment etc. */
   Partition_share *part_share;
   /** Fix spurious -Werror=overloaded-virtual in GCC 9 */
-  virtual void restore_auto_increment(ulonglong prev_insert_id) override
+  void restore_auto_increment(ulonglong prev_insert_id) override
   {
     handler::restore_auto_increment(prev_insert_id);
   }
@@ -487,7 +487,7 @@ public:
   }
   Partition_share *get_part_share() { return part_share; }
   handler *clone(const char *name, MEM_ROOT *mem_root) override;
-  virtual void set_part_info(partition_info *part_info) override
+  void set_part_info(partition_info *part_info) override
   {
      m_part_info= part_info;
      m_is_sub_partitioned= part_info->is_sub_partitioned();
