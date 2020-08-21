@@ -950,7 +950,7 @@ int spider_db_set_names_internal(
       conn->mta_conn_mutex_lock_already = TRUE;
       if (
         spider_db_before_query(conn, need_mon) ||
-        conn->db_conn->set_character_set(share->access_charset->csname)
+        conn->db_conn->set_character_set(share->access_charset->cs_name.str)
       ) {
         conn->mta_conn_mutex_lock_already = tmp_mta_conn_mutex_lock_already;
         DBUG_RETURN(spider_db_errorno(conn));
@@ -2769,8 +2769,8 @@ int spider_db_append_charset_name_before_string(
   spider_string *str,
   CHARSET_INFO *cs
 ) {
-  const char *csname = cs->csname;
-  uint csname_length = strlen(csname);
+  const char *csname = cs->cs_name.str;
+  uint csname_length = cs->cs_name.length;
   DBUG_ENTER("spider_db_append_charset_name_before_string");
   if (str->reserve(SPIDER_SQL_UNDERSCORE_LEN + csname_length))
   {
@@ -3128,7 +3128,7 @@ int spider_db_fetch_row(
   Time_zone *saved_time_zone = thd->variables.time_zone;
   DBUG_ENTER("spider_db_fetch_row");
   DBUG_PRINT("info", ("spider field_name %s", SPIDER_field_name_str(field)));
-  DBUG_PRINT("info", ("spider fieldcharset %s", field->charset()->csname));
+  DBUG_PRINT("info", ("spider fieldcharset %s", field->charset()->cs_name.str));
 
   thd->variables.time_zone = UTC;
 
@@ -11202,7 +11202,7 @@ int spider_db_udf_direct_sql_set_names(
       if (
         (
           spider_db_before_query(conn, &need_mon) ||
-          conn->db_conn->set_character_set(trx->udf_access_charset->csname)
+          conn->db_conn->set_character_set(trx->udf_access_charset->cs_name.str)
         ) &&
         (error_num = spider_db_errorno(conn))
       ) {

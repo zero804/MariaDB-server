@@ -2445,7 +2445,7 @@ bool DTCollation::aggregate(const DTCollation &dt, uint flags)
         set(dt);
         return 0;
       }
-      CHARSET_INFO *bin= get_charset_by_csname(collation->csname, 
+      CHARSET_INFO *bin= get_charset_by_csname(collation->cs_name.str,
                                                MY_CS_BINSORT,MYF(0));
       set(bin, DERIVATION_NONE);
     }
@@ -2459,8 +2459,8 @@ static
 void my_coll_agg_error(DTCollation &c1, DTCollation &c2, const char *fname)
 {
   my_error(ER_CANT_AGGREGATE_2COLLATIONS,MYF(0),
-           c1.collation->name,c1.derivation_name(),
-           c2.collation->name,c2.derivation_name(),
+           c1.collation->col_name.str, c1.derivation_name(),
+           c2.collation->col_name.str, c2.derivation_name(),
            fname);
 }
 
@@ -2470,10 +2470,10 @@ void my_coll_agg_error(DTCollation &c1, DTCollation &c2, DTCollation &c3,
                        const char *fname)
 {
   my_error(ER_CANT_AGGREGATE_3COLLATIONS,MYF(0),
-  	   c1.collation->name,c1.derivation_name(),
-	   c2.collation->name,c2.derivation_name(),
-	   c3.collation->name,c3.derivation_name(),
-	   fname);
+           c1.collation->col_name.str, c1.derivation_name(),
+           c2.collation->col_name.str, c2.derivation_name(),
+           c3.collation->col_name.str, c3.derivation_name(),
+           fname);
 }
 
 
@@ -3774,8 +3774,7 @@ void Item_string::print(String *str, enum_query_type query_type)
   if (print_introducer)
   {
     str->append('_');
-    str->append(collation.collation->csname,
-                strlen(collation.collation->csname));
+    str->append(collation.collation->cs_name);
   }
 
   str->append('\'');
@@ -6335,7 +6334,7 @@ String *Item::check_well_formed_result(String *str, bool send_error)
     if (send_error)
     {
       my_error(ER_INVALID_CHARACTER_STRING, MYF(0),
-               cs->csname,  hexbuf);
+               cs->cs_name.str,  hexbuf);
       return 0;
     }
     if (thd->is_strict_mode())
@@ -6349,7 +6348,7 @@ String *Item::check_well_formed_result(String *str, bool send_error)
     }
     push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
                         ER_INVALID_CHARACTER_STRING,
-                        ER_THD(thd, ER_INVALID_CHARACTER_STRING), cs->csname,
+                        ER_THD(thd, ER_INVALID_CHARACTER_STRING), cs->cs_name.str,
                         hexbuf);
   }
   return str;
@@ -6374,7 +6373,7 @@ String_copier_for_item::copy_with_warn(CHARSET_INFO *dstcs, String *dst,
                         ER_INVALID_CHARACTER_STRING,
                         ER_THD(m_thd, ER_INVALID_CHARACTER_STRING),
                         srccs == &my_charset_bin ?
-                        dstcs->csname : srccs->csname,
+                        dstcs->cs_name.str : srccs->cs_name.str,
                         err.ptr());
     return false;
   }
@@ -6387,7 +6386,7 @@ String_copier_for_item::copy_with_warn(CHARSET_INFO *dstcs, String *dst,
     push_warning_printf(m_thd, Sql_condition::WARN_LEVEL_WARN,
                         ER_CANNOT_CONVERT_CHARACTER,
                         ER_THD(m_thd, ER_CANNOT_CONVERT_CHARACTER),
-                        srccs->csname, buf, dstcs->csname);
+                        srccs->cs_name.str, buf, dstcs->cs_name.str);
     return false;
   }
   return false;

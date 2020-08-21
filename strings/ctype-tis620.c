@@ -41,6 +41,7 @@
 #ifdef HAVE_CHARSET_tis620
 
 const char charset_name_tis620[]= "tis620";
+#define charset_name_tis620_length  sizeof(charset_name_tis620)-1
 
 #define M  L_MIDDLE
 #define U  L_UPPER
@@ -916,8 +917,8 @@ struct charset_info_st my_charset_tis620_thai_ci=
 {
     18,0,0,		/* number    */
     MY_CS_COMPILED|MY_CS_PRIMARY|MY_CS_STRNXFRM|MY_CS_NON1TO1, /* state     */
-    charset_name_tis620,		/* cs name    */
-    "tis620_thai_ci",	/* name      */
+    { charset_name_tis620, charset_name_tis620_length },        /* cs name    */
+    { STRING_WITH_LEN("tis620_thai_ci") },	               /* name      */
     "",			/* comment   */
     NULL,		/* tailoring */
     ctype_tis620,
@@ -948,8 +949,8 @@ struct charset_info_st my_charset_tis620_bin=
 {
     89,0,0,		/* number    */
     MY_CS_COMPILED|MY_CS_BINSORT,	/* state     */
-    charset_name_tis620,		/* cs name    */
-    "tis620_bin",	/* name      */
+    { charset_name_tis620, charset_name_tis620_length },	/* cs name    */
+    { STRING_WITH_LEN("tis620_bin") },	                        /* name      */
     "",			/* comment   */
     NULL,		/* tailoring */
     ctype_tis620,
@@ -981,8 +982,8 @@ struct charset_info_st my_charset_tis620_thai_nopad_ci=
 {
     MY_NOPAD_ID(18),0,0,   /* number           */
     MY_CS_COMPILED|MY_CS_STRNXFRM|MY_CS_NON1TO1|MY_CS_NOPAD, /* state */
-    charset_name_tis620,              /* cs name          */
-    "tis620_thai_nopad_ci",/* name             */
+    { charset_name_tis620, charset_name_tis620_length },	/* cs name    */
+    { STRING_WITH_LEN("tis620_thai_nopad_ci") },                /* name        */
     "",                    /* comment          */
     NULL,                  /* tailoring        */
     ctype_tis620,
@@ -1014,8 +1015,8 @@ struct charset_info_st my_charset_tis620_nopad_bin=
 {
     MY_NOPAD_ID(89),0,0,   /* number           */
     MY_CS_COMPILED|MY_CS_BINSORT|MY_CS_NOPAD, /* state */
-    charset_name_tis620,              /* cs name          */
-    "tis620_nopad_bin",    /* name             */
+    { charset_name_tis620, charset_name_tis620_length },	/* cs name    */
+    { STRING_WITH_LEN("tis620_nopad_bin") },                    /* name      */
     "",                    /* comment          */
     NULL,                  /* tailoring        */
     ctype_tis620,
