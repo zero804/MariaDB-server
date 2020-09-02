@@ -407,7 +407,7 @@ bool Item_sum::register_sum_func(THD *thd, Item **ref)
     for (sl= thd->lex->current_select; 
          sl && sl != aggr_sel && sl->master_unit()->item;
          sl= sl->master_unit()->outer_select() )
-      sl->master_unit()->item->flags|= ITEM_FLAG_WITH_SUM_FUNC;
+      sl->master_unit()->item->with_flags|= item_with_t::SUM_FUNC;
   }
   thd->lex->current_select->mark_as_dependent(thd, aggr_sel, NULL);
 
@@ -487,7 +487,7 @@ void Item_sum::mark_as_sum_func()
   cur_select->n_sum_items++;
   cur_select->with_sum_func= 1;
   const_item_cache= false;
-  flags= (flags | ITEM_FLAG_WITH_SUM_FUNC) & ~ITEM_FLAG_WITH_FIELD;
+  with_flags= (with_flags | item_with_t::SUM_FUNC) & ~item_with_t::FIELD;
   window_func_sum_expr_flag= false;
 }
 
@@ -891,7 +891,7 @@ bool Aggregator_distinct::setup(THD *thd)
     */
 
     item_sum->null_value= 1;
-    item_sum->flags|= ITEM_FLAG_MAYBE_NULL;
+    item_sum->set_maybe_null();
     item_sum->quick_group= 0;
 
     DBUG_ASSERT(item_sum->get_arg(0)->fixed());
@@ -1124,9 +1124,8 @@ Item_sum_num::fix_fields(THD *thd, Item **ref)
     if (args[i]->fix_fields_if_needed_for_scalar(thd, &args[i]))
       return TRUE;
     set_if_bigger(decimals, args[i]->decimals);
-    flags|= (args[i]->flags & (ITEM_FLAG_WITH_SUBQUERY |
-                               ITEM_FLAG_WITH_PARAM |
-                               ITEM_FLAG_WITH_WINDOW_FUNC));
+    /* We should ignore FIELD's in arguments to sum functions */
+    with_flags|= (args[i]->with_flags & ~item_with_t::FIELD);
   }
   result_field=0;
   max_length=float_length(decimals);
@@ -1136,7 +1135,7 @@ Item_sum_num::fix_fields(THD *thd, Item **ref)
     return TRUE;
 
   memcpy (orig_args, args, sizeof (Item *) * arg_count);
-  flags|= ITEM_FLAG_FIXED;
+  base_flags|= item_base_t::FIXED;
   return FALSE;
 }
 
@@ -1154,10 +1153,8 @@ Item_sum_min_max::fix_fields(THD *thd, Item **ref)
   if (args[0]->fix_fields_if_needed_for_scalar(thd, &args[0]))
     DBUG_RETURN(TRUE);
 
-  flags|= (args[0]->flags & (ITEM_FLAG_WITH_SUBQUERY |
-                             ITEM_FLAG_WITH_PARAM |
-                             ITEM_FLAG_WITH_WINDOW_FUNC));
-
+  /* We should ignore FIELD's in arguments to sum functions */
+  with_flags|= (args[0]->with_flags & ~item_with_t::FIELD);
   if (fix_length_and_dec())
     DBUG_RETURN(TRUE);
 
@@ -1169,7 +1166,7 @@ Item_sum_min_max::fix_fields(THD *thd, Item **ref)
     DBUG_RETURN(TRUE);
 
   orig_args[0]= args[0];
-  flags|= ITEM_FLAG_FIXED;
+  base_flags|= item_base_t::FIXED;
   DBUG_RETURN(FALSE);
 }
 
@@ -1239,7 +1236,7 @@ bool Item_sum_min_max::fix_length_and_dec()
   DBUG_ASSERT(args[0]->field_type() == args[0]->real_item()->field_type());
   DBUG_ASSERT(args[0]->result_type() == args[0]->real_item()->result_type());
   /* MIN/MAX can return NULL for empty set indepedent of the used column */
-  flags|= ITEM_FLAG_MAYBE_NULL;
+  set_maybe_null();
   null_value= true;
   return args[0]->type_handler()->Item_sum_hybrid_fix_length_and_dec(this);
 }
@@ -1311,7 +1308,7 @@ Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
                            sp_name *name_arg, sp_head *sp, List<Item> &list)
   :Item_sum(thd, list), Item_sp(thd, context_arg, name_arg)
 {
-  flags|= ITEM_FLAG_MAYBE_NULL;
+  set_maybe_null();
   quick_group= 0;
   m_sp= sp;
 }
@@ -1320,7 +1317,7 @@ Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
                            sp_name *name_arg, sp_head *sp)
   :Item_sum(thd), Item_sp(thd, context_arg, name_arg)
 {
-  flags|= ITEM_FLAG_MAYBE_NULL;
+  set_maybe_null();
   quick_group= 0;
   m_sp= sp;
 }
@@ -1328,7 +1325,7 @@ Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
 Item_sum_sp::Item_sum_sp(THD *thd, Item_sum_sp *item):
              Item_sum(thd, item), Item_sp(thd, item)
 {
-  flags|= (item->flags & ITEM_FLAG_MAYBE_NULL);
+  base_flags|= (item->base_flags & item_base_t::MAYBE_NULL);
   quick_group= item->quick_group;
 }
 
@@ -1357,8 +1354,8 @@ Item_sum_sp::fix_fields(THD *thd, Item **ref)
     if (args[i]->fix_fields_if_needed_for_scalar(thd, &args[i]))
       return TRUE;
     set_if_bigger(decimals, args[i]->decimals);
-    flags|= (args[i]->flags & (ITEM_FLAG_WITH_SUBQUERY |
-                              ITEM_FLAG_WITH_WINDOW_FUNC));
+  /* We should ignore FIELD's in arguments to sum functions */
+    with_flags|= (args[i]->with_flags & ~item_with_t::FIELD);
   }
   result_field= NULL;
   max_length= float_length(decimals);
@@ -1370,7 +1367,7 @@ Item_sum_sp::fix_fields(THD *thd, Item **ref)
     return TRUE;
 
   memcpy(orig_args, args, sizeof(Item *) * arg_count);
-  flags|= ITEM_FLAG_FIXED;
+  base_flags|= item_base_t::FIXED;
   return FALSE;
 }
 
@@ -1554,7 +1551,7 @@ void Item_sum_sum::fix_length_and_dec_decimal()
 bool Item_sum_sum::fix_length_and_dec()
 {
   DBUG_ENTER("Item_sum_sum::fix_length_and_dec");
-  flags|= ITEM_FLAG_MAYBE_NULL;
+  set_maybe_null();
   null_value=1;
   if (args[0]->cast_to_int_type_handler()->
       Item_sum_sum_fix_length_and_dec(this))
@@ -1977,7 +1974,7 @@ bool Item_sum_avg::fix_length_and_dec()
 {
   DBUG_ENTER("Item_sum_avg::fix_length_and_dec");
   prec_increment= current_thd->variables.div_precincrement;
-  flags|= ITEM_FLAG_MAYBE_NULL;
+  set_maybe_null();
   null_value=1;
   if (args[0]->cast_to_int_type_handler()->
       Item_sum_avg_fix_length_and_dec(this))
@@ -2208,7 +2205,7 @@ void Item_sum_variance::fix_length_and_dec_decimal()
 bool Item_sum_variance::fix_length_and_dec()
 {
   DBUG_ENTER("Item_sum_variance::fix_length_and_dec");
-  flags|= ITEM_FLAG_MAYBE_NULL;
+  set_maybe_null();
   null_value= 1;
   prec_increment= current_thd->variables.div_precincrement;
 
@@ -4220,7 +4217,7 @@ Item_func_group_concat::fix_fields(THD *thd, Item **ref)
   if (init_sum_func_check(thd))
     return TRUE;
 
-  flags|= ITEM_FLAG_MAYBE_NULL;
+  set_maybe_null();
 
   /*
     Fix fields for select list and ORDER clause
@@ -4230,9 +4227,8 @@ Item_func_group_concat::fix_fields(THD *thd, Item **ref)
   {
     if (args[i]->fix_fields_if_needed_for_scalar(thd, &args[i]))
       return TRUE;
-    flags|= (args[i]->flags & (ITEM_FLAG_WITH_SUBQUERY |
-                               ITEM_FLAG_WITH_PARAM |
-                               ITEM_FLAG_WITH_WINDOW_FUNC));
+    /* We should ignore FIELD's in arguments to sum functions */
+    with_flags|= (args[i]->with_flags & ~item_with_t::FIELD);
   }
 
   /* skip charset aggregation for order columns */
@@ -4271,7 +4267,7 @@ Item_func_group_concat::fix_fields(THD *thd, Item **ref)
   if (check_sum_func(thd, ref))
     return TRUE;
 
-  flags|= ITEM_FLAG_FIXED;
+  base_flags|= item_base_t::FIXED;
   return FALSE;
 }
 
