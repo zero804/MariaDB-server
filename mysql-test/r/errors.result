@@ -172,3 +172,17 @@ set max_session_mem_used = 50000;
 select * from seq_1_to_1000;
 set max_session_mem_used = 8192;
 select * from seq_1_to_1000;
+#
+# 10.1 Test
+#
+# MDEV-22422: Assertion `! is_set()' failed in
+# Diagnostics_area::set_eof_status
+#
+SET @saved_max_session_mem_used = @@max_session_mem_used;
+SET max_session_mem_used = 50000;
+help 'it is going to crash';
+ERROR HY000: The MariaDB server is running with the --max-thread-mem-used=50000 option so it cannot execute this statement
+SET @@max_session_mem_used=@saved_max_session_mem_used;
+#
+# End of 10.1 Test
+#

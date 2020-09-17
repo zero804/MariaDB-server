@@ -213,3 +213,22 @@ select * from seq_1_to_1000;
 --enable_result_log
 # We may not be able to execute any more queries with this connection
 # because of too little memory#
+
+--echo #
+--echo # 10.1 Test
+--echo #
+--echo # MDEV-22422: Assertion `! is_set()' failed in
+--echo # Diagnostics_area::set_eof_status
+--echo #
+
+SET @saved_max_session_mem_used = @@max_session_mem_used;
+
+SET max_session_mem_used = 50000;
+--error ER_OPTION_PREVENTS_STATEMENT
+help 'it is going to crash';
+
+SET @@max_session_mem_used=@saved_max_session_mem_used;
+
+--echo #
+--echo # End of 10.1 Test
+--echo #
