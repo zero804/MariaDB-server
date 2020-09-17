@@ -29,6 +29,7 @@
 #include "m_string.h"                           /* TRASH */
 #include "sql_list.h"
 
+class Static_binary_string;
 class String;
 #ifdef MYSQL_SERVER
 extern PSI_memory_key key_memory_String_value;
@@ -41,7 +42,8 @@ typedef struct st_io_cache IO_CACHE;
 typedef struct st_mem_root MEM_ROOT;
 
 #include "pack.h"
-int sortcmp(const String *a,const String *b, CHARSET_INFO *cs);
+int sortcmp(const Static_binary_string *s, const Static_binary_string *t,
+            CHARSET_INFO *cs);
 String *copy_if_not_alloced(String *a,String *b,uint32 arg_length);
 inline uint32 copy_and_convert(char *to, size_t to_length,
                                CHARSET_INFO *to_cs,
@@ -206,12 +208,9 @@ protected:
   char *Ptr;
   uint32 str_length;
 public:
-  Static_binary_string()
-   :Ptr(NULL),
-    str_length(0)
+  Static_binary_string() :Ptr(NULL), str_length(0)
   { }
-  Static_binary_string(char *str, size_t length_arg)
-   :Ptr(str),
+  Static_binary_string(char *str, size_t length_arg) :Ptr(str),
     str_length((uint32) length_arg)
   {
     DBUG_ASSERT(length_arg < UINT_MAX32);
@@ -345,7 +344,7 @@ public:
   void qs_append(const char *str, size_t len);
   void qs_append_hex(const char *str, uint32 len);
   void qs_append(double d);
-  void qs_append(double *d);
+  void qs_append(const double *d);
   inline void qs_append(const char c)
   {
      Ptr[str_length]= c;
@@ -728,12 +727,10 @@ class String: public Charset, public Binary_string
 {
 public:
   String() { }
-  String(size_t length_arg)
-   :Binary_string(length_arg)
+  String(size_t length_arg) :Binary_string(length_arg)
   { }
   String(const char *str, CHARSET_INFO *cs)
-   :Charset(cs),
-    Binary_string(str)
+   :Charset(cs), Binary_string(str)
   { }
   /*
     NOTE: If one intend to use the c_ptr() method, the following two
@@ -741,16 +738,13 @@ public:
     room for zero termination).
   */
   String(const char *str, size_t len, CHARSET_INFO *cs)
-   :Charset(cs),
-    Binary_string((char *) str, len)
+   :Charset(cs), Binary_string((char *) str, len)
   { }
   String(char *str, size_t len, CHARSET_INFO *cs)
-   :Charset(cs),
-    Binary_string(str, len)
+   :Charset(cs), Binary_string(str, len)
   { }
   String(const String &str)
-   :Charset(str),
-    Binary_string(str)
+   :Charset(str), Binary_string(str)
   { }
 
   void set(String &str,size_t offset,size_t arg_length)
@@ -941,8 +935,9 @@ public:
   }
 
   void strip_sp();
-  friend int sortcmp(const String *a,const String *b, CHARSET_INFO *cs);
-  friend int stringcmp(const String *a,const String *b);
+  friend int sortcmp(const Static_binary_string *, const Static_binary_string *,
+                     CHARSET_INFO *);
+  friend int stringcmp(const Binary_string *, const Binary_string *);
   friend String *copy_if_not_alloced(String *a,String *b,uint32 arg_length);
   friend class Field;
   uint32 numchars() const

@@ -7263,27 +7263,21 @@ public:
   Item_type_holder do not need cleanup() because its time of live limited by
   single SP/PS execution.
 */
-class Item_type_holder: public Item,
-                        public Type_handler_hybrid_field_type
+class Item_type_holder: public Item, public Type_handler_hybrid_field_type
 {
 protected:
   const TYPELIB *enum_set_typelib;
 public:
-  Item_type_holder(THD *thd, Item *item)
-   :Item(thd, item),
+  Item_type_holder(THD *thd, Item *item) :Item(thd, item),
     Type_handler_hybrid_field_type(item->real_type_handler()),
     enum_set_typelib(0)
   {
     DBUG_ASSERT(item->is_fixed());
     maybe_null= item->maybe_null;
   }
-  Item_type_holder(THD *thd,
-                   Item *item,
-                   const Type_handler *handler,
-                   const Type_all_attributes *attr,
-                   bool maybe_null_arg)
-   :Item(thd),
-    Type_handler_hybrid_field_type(handler),
+  Item_type_holder(THD *thd, Item *item, const Type_handler *handler,
+                   const Type_all_attributes *attr, bool maybe_null_arg)
+   :Item(thd), Type_handler_hybrid_field_type(handler),
     enum_set_typelib(attr->get_typelib())
   {
     name= item->name;

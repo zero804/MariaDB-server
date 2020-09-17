@@ -80,6 +80,8 @@ static my_bool g_allow_create_integer_latch = FALSE;
 
 using namespace open_query;
 
+static const LEX_CSTRING empty_clex_str= {"", 0};
+
 // Table of varchar latch operations.
 // In the future this needs to be refactactored to live somewhere else
 struct oqgraph_latch_op_table { const char *key; int latch; };
