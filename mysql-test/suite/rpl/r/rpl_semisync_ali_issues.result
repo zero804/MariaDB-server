@@ -35,6 +35,7 @@ Rpl_semi_sync_slave_send_ack	0
 Rpl_semi_sync_slave_status	ON
 connection master;
 CREATE TABLE t1(a INT) ENGINE=InnoDB;
+INSERT INTO t1 VALUES(100);
 connection slave;
 connection master;
 connect con1,localhost,root,,;
@@ -45,7 +46,7 @@ Variable_name	Value
 Rpl_semi_sync_master_clients	1
 show status like "rpl_semi_sync_master_yes_tx";
 Variable_name	Value
-Rpl_semi_sync_master_yes_tx	1
+Rpl_semi_sync_master_yes_tx	2
 #########################################
 # Test rpl_semi_sync_master_wait_point  #
 #########################################
@@ -62,18 +63,22 @@ connection slave;
 #slave can see record (1) after sync slave with master
 select * from t1;
 a
+100
 1
 connection con2;
 #con2 shouldn't see record (1)
 select * from t1;
 a
+100
 SET DEBUG_SYNC= "now SIGNAL end";
 connection con1;
 connection con1;
 select * from t1;
 a
+100
 1
 truncate table t1;
+INSERT INTO t1 VALUES(100);
 connection slave;
 connection con1;
 SET DEBUG_SYNC= 'reset';
@@ -107,6 +112,7 @@ SET DEBUG_SYNC= "now WAIT_FOR after_commit_done";
 connection slave;
 select * from t1;
 a
+100
 1
 2
 3
@@ -114,6 +120,7 @@ a
 connection con2;
 select * from t1;
 a
+100
 1
 2
 3
@@ -123,6 +130,7 @@ connection con1;
 connection con1;
 select * from t1;
 a
+100
 1
 2
 3

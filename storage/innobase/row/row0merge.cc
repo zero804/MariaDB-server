@@ -3495,6 +3495,12 @@ row_merge_insert_index_tuples(
 	ut_ad(!(index->type & DICT_FTS));
 	ut_ad(!dict_index_is_spatial(index));
 
+	if (dict_index_is_clust(index) && index->table != old_table
+	    && index->table->can_bulk_op()) {
+		index->table->set_bulk_trx(btr_bulk->trx()->id);
+		index->table->non_empty= true;
+	}
+
 	if (stage != NULL) {
 		stage->begin_phase_insert();
 	}

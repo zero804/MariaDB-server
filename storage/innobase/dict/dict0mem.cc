@@ -39,6 +39,7 @@ Created 1/8/1996 Heikki Tuuri
 #include "row0row.h"
 #include "sql_string.h"
 #include <iostream>
+#include "btr0pcur.h"
 
 #define	DICT_HEAP_SIZE		100	/*!< initial memory heap size when
 					creating a table or index object */
@@ -1392,4 +1393,105 @@ dict_index_t::vers_history_row(
 		mem_heap_free(heap);
 	}
 	return(error);
+}
+
+void dict_table_t::empty_table()
+{
+  mtr_t mtr;
+  for (dict_index_t* index= UT_LIST_GET_FIRST(indexes);
+       index != NULL; index= UT_LIST_GET_NEXT(indexes, index))
+  {
+    if (index->online_status == ONLINE_INDEX_ABORTED
+        || index->online_status == ONLINE_INDEX_ABORTED_DROPPED)
+      continue;
+
+    if (index->page == FIL_NULL && index->type & DICT_FTS)
+      continue;
+
+    mtr.start();
+    /* Free the indexes */
+    buf_block_t* root_block= buf_page_get(page_id_t(space->id, index->page),
+                                          space->zip_size(), RW_X_LATCH,
+                                          &mtr);
+    if (root_block)
+      btr_free_but_not_root(root_block, mtr.get_log_mode());
+
+    mtr.set_named_space_id(space->id);
+    btr_root_page_init(root_block, index->id, index, &mtr);
+    if (!fseg_create(space, PAGE_HEADER + PAGE_BTR_SEG_LEAF,
+                     &mtr, root_block))
+    {
+      ut_ad(0);
+    }
+    mtr.commit();
+  }
+
+  remove_bulk_trx();
+}
+
+void dict_table_t::assign_stat_n_rows()
+{
+  if (!space || !is_readable())
+    return;
+
+  dict_index_t* clust_index= dict_table_get_first_index(this);
+  mtr_t mtr;
+  btr_pcur_t pcur;
+  buf_block_t *block;
+  page_cur_t *cur;
+  const rec_t *rec;
+  bool next_page= false;
+
+  mtr.start();
+  btr_pcur_open_at_index_side(true, clust_index, BTR_SEARCH_LEAF,
+                              &pcur, true, 0, &mtr);
+  if (!is_readable())
+  {
+    mtr.commit();
+    return ;
+  }
+  btr_pcur_move_to_next_user_rec(&pcur, &mtr);
+  if (!rec_is_metadata(btr_pcur_get_rec(&pcur), *clust_index))
+    btr_pcur_move_to_prev_on_page(&pcur);
+  ulint n_rows= 0;
+scan_leaf:
+  cur= btr_pcur_get_page_cur(&pcur);
+  page_cur_move_to_next(cur);
+next_page:
+  if (next_page)
+  {
+    uint32_t next_page_no= btr_page_get_next(page_cur_get_page(cur));
+    if (next_page_no == FIL_NULL)
+    {
+      mtr.commit();
+      stat_n_rows= n_rows;
+      if (n_rows)
+	non_empty= true;
+      return;
+    }
+
+    next_page= false;
+    block= page_cur_get_block(cur);
+    block= btr_block_get(*clust_index, next_page_no, BTR_SEARCH_LEAF, false,
+                         &mtr);
+    btr_leaf_page_release(page_cur_get_block(cur), BTR_SEARCH_LEAF, &mtr);
+    if (block == nullptr)
+    {
+      mtr.commit();
+      return;
+    }
+    page_cur_set_before_first(block, cur);
+    page_cur_move_to_next(cur);
+  }
+
+  rec= page_cur_get_rec(cur);
+  if (rec_get_deleted_flag(rec, dict_table_is_comp(this)));
+  else if (!page_rec_is_supremum(rec))
+    n_rows++;
+  else
+  {
+    next_page= true;
+    goto next_page;
+  }
+  goto scan_leaf;
 }

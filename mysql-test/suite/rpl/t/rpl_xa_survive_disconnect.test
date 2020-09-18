@@ -29,6 +29,8 @@ CREATE DATABASE d2;
 
 CREATE TABLE d1.t (a INT) ENGINE=innodb;
 CREATE TABLE d2.t (a INT) ENGINE=innodb;
+INSERT INTO d1.t VALUES(100);
+INSERT INTO d2.t VALUES(100);
 
 connect (master_conn1, 127.0.0.1,root,,test,$MASTER_MYPORT,);
 --let $conn_id=`SELECT connection_id()`

@@ -393,6 +393,10 @@ connect(con1, localhost, root,,);
 connection default;
 eval CREATE TABLE t1 (c1 INT NOT NULL AUTO_INCREMENT, PRIMARY KEY (c1))
   ENGINE = $engine;
+if ($engine == "'InnoDB'")
+{
+INSERT INTO t1 (c1) VALUES(100);
+}
 START TRANSACTION;
 INSERT INTO t1 (c1) VALUES (2);
 INSERT INTO t1 (c1) VALUES (4);
@@ -434,6 +438,10 @@ eval CREATE TABLE t1 (c1 INT NOT NULL AUTO_INCREMENT, PRIMARY KEY (c1))
   ENGINE = $engine
   PARTITION BY HASH(c1)
   PARTITIONS 2;
+if ($engine == "'InnoDB'") {
+INSERT INTO t1 (c1) VALUES (100);
+INSERT INTO t1 (c1) VALUES (101);
+}
 START TRANSACTION;
 INSERT INTO t1 (c1) VALUES (2);
 INSERT INTO t1 (c1) VALUES (4);

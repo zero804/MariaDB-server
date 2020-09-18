@@ -449,6 +449,9 @@ lock_table_ix_resurrect(
 	dict_table_t*	table,	/*!< in/out: table */
 	trx_t*		trx);	/*!< in/out: transaction */
 
+void
+lock_table_downgrade_to_IX(dict_table_t* table, trx_t* trx);
+
 /** Sets a lock on a table based on the given mode.
 @param[in]	table	table to lock
 @param[in,out]	trx	transaction
@@ -605,6 +608,17 @@ const char*
 lock_rec_get_index_name(
 /*====================*/
 	const lock_t*	lock);	/*!< in: lock */
+
+/*********************************************************************//**
+Checks if a transaction has the specified table lock, or stronger. This
+function should only be called by the thread that owns the transaction.
+@return lock or NULL */
+const lock_t*
+lock_table_has(
+/*===========*/
+	const trx_t*		trx,	/*!< in: transaction */
+	const dict_table_t*	table,	/*!< in: table */
+	enum lock_mode		mode);	/*!< in: lock mode */
 
 /*******************************************************************//**
 Check if there are any locks (table or rec) against table.

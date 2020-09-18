@@ -609,18 +609,6 @@ lock_get_wait(
 /*==========*/
 	const lock_t*	lock);	/*!< in: lock */
 
-/*********************************************************************//**
-Checks if a transaction has the specified table lock, or stronger. This
-function should only be called by the thread that owns the transaction.
-@return lock or NULL */
-UNIV_INLINE
-const lock_t*
-lock_table_has(
-/*===========*/
-	const trx_t*		trx,	/*!< in: transaction */
-	const dict_table_t*	table,	/*!< in: table */
-	enum lock_mode		mode);	/*!< in: lock mode */
-
 /** Set the wait status of a lock.
 @param[in,out]	lock	lock that will be waited for
 @param[in,out]	trx	transaction that will wait for the lock */

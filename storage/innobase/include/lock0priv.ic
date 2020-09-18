@@ -277,45 +277,4 @@ lock_get_wait(
 	return(lock->type_mode & LOCK_WAIT);
 }
 
-/*********************************************************************//**
-Checks if a transaction has the specified table lock, or stronger. This
-function should only be called by the thread that owns the transaction.
-@return lock or NULL */
-UNIV_INLINE
-const lock_t*
-lock_table_has(
-/*===========*/
-	const trx_t*		trx,	/*!< in: transaction */
-	const dict_table_t*	table,	/*!< in: table */
-	lock_mode		in_mode)/*!< in: lock mode */
-{
-	/* Look for stronger locks the same trx already has on the table */
-
-	for (lock_list::const_iterator it = trx->lock.table_locks.begin(),
-             end = trx->lock.table_locks.end(); it != end; ++it) {
-
-		const lock_t*	lock = *it;
-
-		if (lock == NULL) {
-			continue;
-		}
-
-		lock_mode	mode = lock_get_mode(lock);
-
-		ut_ad(trx == lock->trx);
-		ut_ad(lock_get_type_low(lock) & LOCK_TABLE);
-		ut_ad(lock->un_member.tab_lock.table != NULL);
-
-		if (table == lock->un_member.tab_lock.table
-		    && lock_mode_stronger_or_eq(mode, in_mode)) {
-
-			ut_ad(!lock_get_wait(lock));
-
-			return(lock);
-		}
-	}
-
-	return(NULL);
-}
-
 /* vim: set filetype=c: */

@@ -49,9 +49,14 @@ die "Unable to read $file" unless sysread(FILE, $page, $ps) == $ps;
 print "N_RECS=", unpack("n", substr($page,38+16,2));
 print "; LEVEL=", unpack("n", substr($page,38+26,2)), "\n";
 my @fields=qw(a DB_TRX_ID DB_ROLL_PTR b c);
+# MDEV-515 won't change the first record DB_TRX_ID and DB_ROLL_PTR
+# Skip the first record while printing
 for (my $offset= 0x65; $offset;
      $offset= unpack("n", substr($page,$offset-2,2)))
 {
+    if ($offset == 0x87) {
+        next;
+    }
     print "header=0x", unpack("H*",substr($page,$offset-6,6)), " (";
     my $n_fields= unpack("n", substr($page,$offset-4,2)) >> 1 & 0x3ff;
     my $start= 0;

@@ -20,6 +20,7 @@ INSERT INTO t2(c1, c2, c3) VALUES ('A3','B3','IT2'), ('A2','B2','IT2'), ('A4','B
 CREATE TABLE result(id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, c1 VARCHAR(10) NOT NULL, c2 VARCHAR(10),
 c3 VARCHAR(10), update_count INT DEFAULT 0, UNIQUE KEY uniq_idx (c1,c2), PRIMARY KEY (id)) ENGINE = innodb;
 
+INSERT INTO result VALUES(100, 'MDEV-515', 'MDEV-515', 'MDEV-515', 100);
 # Insert one row from 't1' into the 'result' table and wait on a debug sync
 # point. The next insert statement from an session 2 inserts values that would
 # lead to unique key clash, when this insert resumes.

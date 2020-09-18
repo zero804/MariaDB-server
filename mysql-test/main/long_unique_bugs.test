@@ -293,6 +293,9 @@ CREATE TABLE t2 (
   a blob unique
 ) ENGINE=InnoDB;
 
+INSERT INTO t1 VALUES(100, 100);
+INSERT INTO t2 VALUES(100, 100);
+
 START TRANSACTION;
 
 --connect (con1,localhost,root,,test)

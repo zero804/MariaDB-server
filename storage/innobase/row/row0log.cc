@@ -2939,6 +2939,10 @@ all_done:
 			/* The record was not reassembled properly. */
 			goto corruption;
 		}
+
+		if (index->online_log->table->can_bulk_op()) {
+			index->online_log->table->set_bulk_trx(trx->id);
+		}
 		/* The record was previously found out to be
 		truncated. Now that the parse buffer was extended,
 		it should proceed beyond the old end of the buffer. */

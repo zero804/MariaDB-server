@@ -53,7 +53,7 @@ CREATE VIEW v_processlist  as SELECT * FROM performance_schema.threads where typ
 --eval call mtr.add_suppression("Found $prepared_at_server_restart prepared XA transactions")
 
 CREATE TABLE t (a INT) ENGINE=innodb;
-
+INSERT INTO t VALUES(100);
 # Counter is incremented at the end of post restart to
 # reflect number of loops done in correctness computation.
 --let $restart_number = 0

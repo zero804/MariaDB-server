@@ -10,6 +10,7 @@
 
 --connection master
 CREATE TABLE t1 (a INT PRIMARY KEY) ENGINE = innodb;
+INSERT INTO t1 VALUES(100);
 
 --sync_slave_with_master
 --source include/stop_slave.inc

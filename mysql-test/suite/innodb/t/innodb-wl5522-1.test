@@ -493,10 +493,13 @@ SET AUTOCOMMIT = 1;
 
 # case 9 - empty table import
 CREATE TABLE testdb_wl5522.t1 (c1 INT ) ENGINE = Innodb;
-SET AUTOCOMMIT = 0;
-INSERT INTO testdb_wl5522.t1 VALUES (1),(123),(331);
-SELECT c1 FROM testdb_wl5522.t1;
-ROLLBACK;
+# MDEV-515 takes X-lock on the table and it won't allow
+# other DML to happen on the same table before committing it.
+# So we can remove the following test case.
+#SET AUTOCOMMIT = 0;
+#INSERT INTO testdb_wl5522.t1 VALUES (1),(123),(331);
+#SELECT c1 FROM testdb_wl5522.t1;
+#ROLLBACK;
 FLUSH TABLES testdb_wl5522.t1 FOR EXPORT;
 
 perl;

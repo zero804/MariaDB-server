@@ -314,6 +314,10 @@ public:
 	/** Re-latch all latches */
 	void latch();
 
+	const trx_t* trx()
+	{
+	  return m_trx;
+	}
 private:
 	/** Insert a tuple to a page in a level
 	@param[in]	tuple	tuple to insert

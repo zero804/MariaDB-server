@@ -3819,6 +3819,34 @@ lock_table_ix_resurrect(
 	trx_mutex_exit(trx);
 }
 
+void
+lock_table_downgrade_to_IX(dict_table_t* table, trx_t* trx)
+{
+  ut_ad(lock_table_has(trx, table, LOCK_X));
+  lock_mutex_enter();
+  trx_mutex_enter(trx);
+  for (lock_list::iterator it = trx->lock.table_locks.begin(),
+       end = trx->lock.table_locks.end(); it != end; ++it)
+  {
+    lock_t *lock = *it;
+    if (lock == NULL)
+      continue;
+
+    lock_mode mode = lock_get_mode(lock);
+    ut_ad(trx == lock->trx);
+    ut_ad(lock_get_type_low(lock) & LOCK_TABLE);
+    ut_ad(lock->un_member.tab_lock.table != NULL);
+
+    if (table == lock->un_member.tab_lock.table
+        && lock_mode_stronger_or_eq(mode, LOCK_X))
+      lock->type_mode= ib_uint32_t(LOCK_IX | LOCK_TABLE);
+
+  }
+
+  lock_mutex_exit();
+  trx_mutex_exit(trx);
+}
+
 /*********************************************************************//**
 Checks if a waiting table lock request still has to wait in a queue.
 @return TRUE if still has to wait */
@@ -6732,4 +6760,44 @@ lock_update_split_and_merge(
 				lock_get_min_heap_no(right_block));
 
 	lock_mutex_exit();
+}
+
+/*********************************************************************//**
+Checks if a transaction has the specified table lock, or stronger. This
+function should only be called by the thread that owns the transaction.
+@return lock or NULL */
+const lock_t*
+lock_table_has(
+/*===========*/
+	const trx_t*		trx,	/*!< in: transaction */
+	const dict_table_t*	table,	/*!< in: table */
+	lock_mode		in_mode)/*!< in: lock mode */
+{
+	/* Look for stronger locks the same trx already has on the table */
+
+	for (lock_list::const_iterator it = trx->lock.table_locks.begin(),
+             end = trx->lock.table_locks.end(); it != end; ++it) {
+
+		const lock_t*	lock = *it;
+
+		if (lock == NULL) {
+			continue;
+		}
+
+		lock_mode	mode = lock_get_mode(lock);
+
+		ut_ad(trx == lock->trx);
+		ut_ad(lock_get_type_low(lock) & LOCK_TABLE);
+		ut_ad(lock->un_member.tab_lock.table != NULL);
+
+		if (table == lock->un_member.tab_lock.table
+		    && lock_mode_stronger_or_eq(mode, in_mode)) {
+
+			ut_ad(!lock_get_wait(lock));
+
+			return(lock);
+		}
+	}
+
+	return(NULL);
 }

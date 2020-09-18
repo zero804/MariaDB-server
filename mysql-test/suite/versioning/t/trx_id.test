@@ -81,6 +81,8 @@ create or replace table t1 (
   period for system_time (sys_start, sys_end)
 ) with system versioning;
 
+insert into t1 values(100);
+
 set transaction isolation level read committed;
 start transaction;
 insert into t1 values (1);

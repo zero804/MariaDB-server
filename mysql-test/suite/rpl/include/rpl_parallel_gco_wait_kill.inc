@@ -26,6 +26,7 @@ CHANGE MASTER TO master_use_gtid=slave_pos;
 --connect (con_temp5,127.0.0.1,root,,test,$SERVER_MYPORT_1,)
 ALTER TABLE mysql.gtid_slave_pos ENGINE=InnoDB;
 CREATE TABLE t3 (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t3 VALUES(100, 100);
 --save_master_pos
 
 --connection server_2

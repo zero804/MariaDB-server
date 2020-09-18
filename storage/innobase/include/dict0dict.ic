@@ -330,6 +330,9 @@ dict_table_n_rows_inc(
 /*==================*/
 	dict_table_t*	table)	/*!< in/out: table */
 {
+	if (!table->non_empty)
+          table->non_empty= true;
+
 	if (table->stat_initialized) {
 		ib_uint64_t	n_rows = table->stat_n_rows;
 		if (n_rows < 0xFFFFFFFFFFFFFFFFULL) {

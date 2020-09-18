@@ -5743,6 +5743,12 @@ ha_innobase::open(const char* name, int, uint)
 		}
 	}
 
+	if (!ib_table->stat_n_rows) {
+		ib_table->assign_stat_n_rows();
+	} else if (!ib_table->non_empty) {
+		ib_table->non_empty = true;
+	}
+
 	m_prebuilt = row_create_prebuilt(ib_table, table->s->reclength);
 
 	m_prebuilt->default_rec = table->s->default_values;
@@ -7515,6 +7521,12 @@ ha_innobase::write_row(
 
 	trx_t*		trx = thd_to_trx(m_user_thd);
 
+	if (m_prebuilt->table->can_bulk_op()
+	    && lock_table_has(trx, m_prebuilt->table, LOCK_X)) {
+		// bulk index code
+		m_prebuilt->table->bulk_trx_id = trx->id;
+	}
+
 	/* Validation checks before we commence write_row operation. */
 	if (high_level_read_only) {
 		ib_senderrf(ha_thd(), IB_LOG_LEVEL_WARN, ER_READ_ONLY_MODE);
@@ -7708,6 +7720,14 @@ set_max_autoinc:
 		default:
 			break;
 		}
+	}
+
+	/** Note bulk trx id during copy alter table */
+	if (error == DB_SUCCESS
+	    && m_prebuilt->table->skip_alter_undo
+	    && m_prebuilt->table->can_bulk_op()) {
+		m_prebuilt->table->set_bulk_trx(m_prebuilt->trx->id);
+		m_prebuilt->table->non_empty= true;
 	}
 
 report_error:
@@ -15712,6 +15732,32 @@ ha_innobase::external_lock(
 		procedure call (SQLCOM_CALL). */
 
 		if (m_prebuilt->select_lock_type != LOCK_NONE) {
+
+			bool disable_fk=
+			   (thd_test_options(thd, OPTION_NO_FOREIGN_KEY_CHECKS)
+			    || (m_prebuilt->table->foreign_set.empty() &&
+				m_prebuilt->table->referenced_set.empty()));
+
+			if (!m_prebuilt->table->is_temporary()
+			    && m_prebuilt->table->can_bulk_op()
+			    && (thd_sql_command(thd) == SQLCOM_INSERT
+			        || thd_sql_command(thd)
+					== SQLCOM_INSERT_SELECT)
+			    && disable_fk) {
+				dberr_t	error = row_lock_table(m_prebuilt);
+
+				if (error != DB_SUCCESS) {
+					DBUG_RETURN(
+						convert_error_code_to_mysql(
+							error, 0, thd));
+				}
+
+				if (!m_prebuilt->table->can_bulk_op()) {
+					lock_table_downgrade_to_IX(
+						m_prebuilt->table,
+						m_prebuilt->trx);
+				}
+			}
 
 			if (thd_sql_command(thd) == SQLCOM_LOCK_TABLES
 			    && THDVAR(thd, table_locks)

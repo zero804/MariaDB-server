@@ -410,6 +410,15 @@ INSERT INTO mdev6076a SET b=NULL;
 SELECT * FROM mdev6076a;
 INSERT INTO mdev6076b SET b=NULL;
 SELECT * FROM mdev6076b;
+--disable_query_log
+BEGIN;
+let $i= 55;
+while ($i) {
+ eval INSERT INTO mdev6076empty SET b=$i;
+ dec $i;
+}
+ROLLBACK;
+--enable_query_log
 INSERT INTO mdev6076empty SET b=NULL;
 SELECT * FROM mdev6076empty;
 DROP TABLE mdev6076a, mdev6076b, mdev6076empty;
