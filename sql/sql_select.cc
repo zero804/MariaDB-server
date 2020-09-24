@@ -29453,6 +29453,7 @@ void unpack_to_base_table_fields(TABLE *table)
     (*cp->do_copy)(cp);
 }
 
+
 /*
   @brief Check if selectivity is accounted for all parts of the WHERE condition
 
@@ -29506,6 +29507,7 @@ void unpack_to_base_table_fields(TABLE *table)
     TRUE         join cardinality estimate is accurate
     FALSE        join cardinality estimate is not accurate
 */
+
 bool JOIN::all_selectivity_accounted_for_join_cardinality()
 {
   if (!conds)
@@ -29519,7 +29521,7 @@ bool JOIN::all_selectivity_accounted_for_join_cardinality()
     while ((item= li++))
     {
       SAME_FIELD arg= {NULL, this, FALSE, NULL, FALSE};
-      if (item->walk(&Item::is_predicate_selectivity_covered, 0, &arg))
+      if (item->walk(&Item::is_predicate_selectivity_available, 0, &arg))
         return false;
     }
     return true;
@@ -29527,23 +29529,24 @@ bool JOIN::all_selectivity_accounted_for_join_cardinality()
   else
   {
     SAME_FIELD arg= {NULL, this, FALSE, NULL, FALSE};
-    return !conds->walk(&Item::is_predicate_selectivity_covered, 0, &arg);
+    return !conds->walk(&Item::is_predicate_selectivity_available, 0, &arg);
   }
 }
 
 
 /*
   @brief
-    Checks if the predicate is a sargable predicate or not
+    Checks if a predicate is sargable or not
 
   @details
     Sargable predicate is defined as the form of field op const
     where op can be operators like </<=/=/>/>=/BETWEEN etc.
-    Also the field should be covered by an index or EITS.
+    Also the statistics for the field should be available via an index or EITS.
   @retval
     TRUE  : Sargable predicate
     FALSE : Otherwise
 */
+
 bool is_sargable_predicate(Item *item, Item *value, void *arg)
 {
   SAME_FIELD *field_arg= (SAME_FIELD*)arg;

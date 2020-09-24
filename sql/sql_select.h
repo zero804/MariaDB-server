@@ -184,12 +184,18 @@ typedef struct st_table_ref
 } TABLE_REF;
 
 
+/*
+  Structure storing information of a field if it can resolve
+  an AND/OR conjunct by itself or via equality predicates with other fields.
+*/
 typedef struct same_field
 {
+  /* Field structure */
   Field *field;
+  /* Join structure */
   JOIN *join;
   /*
-    TRUE:  Field is present in a multiple equlity
+    TRUE:  Field is present in a multiple equality
     FALSE: Otherwise
   */
   bool present_in_equalities;

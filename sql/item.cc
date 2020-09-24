@@ -9241,7 +9241,7 @@ Item_field::excl_dep_on_grouping_fields(st_select_lex *sel)
     FALSE  : OTHERWISE
 
 */
-bool Item_field::is_predicate_selectivity_covered(void *arg)
+bool Item_field::is_predicate_selectivity_available(void *arg)
 {
   SAME_FIELD *same_field_arg= (SAME_FIELD*)arg;
   /*

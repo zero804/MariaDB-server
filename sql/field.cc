@@ -36,6 +36,8 @@
 #include "tztime.h"                      // struct Time_zone
 #include "filesort.h"                    // change_double_for_sort
 #include "log_event.h"                   // class Table_map_log_event
+#include "sql_statistics.h"
+#include "sql_partition.h"
 #include <m_ctype.h>
 
 // Maximum allowed exponent value for converting string to decimal
@@ -11359,17 +11361,18 @@ void Field::print_key_value_binary(String *out, const uchar* key, uint32 length)
 
 
 /*
-  @brief Check if number of distinct values for a column are available from keys
+  @brief
+    Check if statistics for a column are available via indexes
 
   @details
-    If the column is the first component of a key, then number of distinct
-    values are known.
+    If the column is the first component of an index, then statistics
+    for the column are available.
 
   @retval
-    TRUE     : ndv available from keys
+    TRUE     : statistics available from indexes
     FALSE    : otherwise
 */
-bool Field::is_covered_by_keys()
+bool Field::is_statistics_available_via_indexes()
 {
   DBUG_ASSERT(table);
   uint key;
@@ -11384,24 +11387,29 @@ bool Field::is_covered_by_keys()
 
 
 /*
-  @brief Check if number of distinct values are available from EITS
+  @brief
+    Check if statistics for a column are available via EITS
 
   @retval
-    TRUE     : ndv available from EITS
+    TRUE     : statistics available from EITS
     FALSE    : otherwise
 
 */
-bool Field::is_covered_by_eits()
+bool Field::is_statistics_available_via_eits()
 {
   DBUG_ASSERT(table);
-  if (!(table->stats_is_read && is_eits_usable(this)))
+  if (!(table->stats_is_read && is_eits_usable()))
     return false;
   return true;
 }
 
 
 /*
-  @brief Check if statistics for the field is available
+  @brief
+    Check if statistics for a field is available or not
+
+  @details
+    Check if statistics for a field is available via indexes or EITS
 
   @retval
     TRUE    : statistics available
@@ -11411,12 +11419,15 @@ bool Field::is_covered_by_eits()
 bool Field::is_statistics_available()
 {
   DBUG_ASSERT(table);
-  return is_covered_by_keys() ? TRUE : is_covered_by_eits();
+  return is_statistics_available_via_indexes() ?
+         TRUE :
+         is_statistics_available_via_eits();
 }
 
 
 /*
-  @brief Checks if the field is the first component of a given key
+  @brief
+    Checks if a field is the first component of a given key
 
   @param
     key      given key
@@ -11425,10 +11436,44 @@ bool Field::is_statistics_available()
     TRUE     : field is the first component of the given key
     FALSE    : otherwise
 */
+
 bool Field::is_first_component_of_key(KEY *key)
 {
   DBUG_ASSERT(key->usable_key_parts >= 1);
   return eq(key->key_part->field);
+}
+
+
+/*
+  Check whether EITS statistics for a field are usable or not
+
+  TRUE : Use EITS for the columns
+  FALSE: Otherwise
+*/
+
+bool Field::is_eits_usable()
+{
+  // check if column_statistics was allocated for this field
+  if (!read_stats)
+    return false;
+
+  DBUG_ASSERT(table->stats_is_read);
+
+  /*
+    (1): checks if we have EITS statistics for a particular column
+    (2): Don't use EITS for GEOMETRY columns
+    (3): Disabling reading EITS statistics for columns involved in the
+         partition list of a table. We assume the selecticivity for
+         such columns would be handled during partition pruning.
+  */
+
+  return !read_stats->no_stat_values_provided() &&        //(1)
+          type() != MYSQL_TYPE_GEOMETRY &&              //(2)
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+    (!table->part_info ||
+     !table->part_info->field_in_partition_expr(this)) &&     //(3)
+#endif
+    true;
 }
 
 

@@ -2106,7 +2106,7 @@ bool Item_func_between::count_sargable_conds(void *arg)
   return 0;
 }
 
-bool Item_func_between::is_predicate_selectivity_covered(void *arg)
+bool Item_func_between::is_predicate_selectivity_available(void *arg)
 {
   if (arguments()[0]->real_item()->type() == Item::FIELD_ITEM)
   {
@@ -4311,7 +4311,7 @@ bool Item_func_in::count_sargable_conds(void *arg)
 }
 
 
-bool Item_func_in::is_predicate_selectivity_covered(void *arg)
+bool Item_func_in::is_predicate_selectivity_available(void *arg)
 {
   if (const_item())
     return false;
@@ -5550,7 +5550,7 @@ bool Item_func_null_predicate::count_sargable_conds(void *arg)
 }
 
 
-bool Item_func_null_predicate::is_predicate_selectivity_covered(void *arg)
+bool Item_func_null_predicate::is_predicate_selectivity_available(void *arg)
 {
   if (const_item())
     return false;
@@ -5643,7 +5643,7 @@ bool Item_bool_func2::count_sargable_conds(void *arg)
 }
 
 
-bool Item_bool_func2::is_predicate_selectivity_covered(void *arg)
+bool Item_bool_func2::is_predicate_selectivity_available(void *arg)
 {
   if (const_item())
     return false;
@@ -5759,7 +5759,7 @@ SEL_TREE *Item_func_like::get_mm_tree(RANGE_OPT_PARAM *param, Item **cond_ptr)
 }
 
 
-bool Item_func_like::is_predicate_selectivity_covered(void *arg)
+bool Item_func_like::is_predicate_selectivity_available(void *arg)
 {
   if (const_item())
     return false;
@@ -7212,23 +7212,18 @@ bool Item_equal::count_sargable_conds(void *arg)
 }
 
 
-bool Item_equal::is_predicate_selectivity_covered(void *arg)
+bool Item_equal::is_predicate_selectivity_available(void *arg)
 {
   /*
     For equality conditions like tbl1.col = tbl2.col
-
-    We would have an Item_equal(tbl1.col, tbl2.col)
-    (1) If EITS is available then there is no issue,
-        number of distinct values is available
-    (2) If EITS is not available then the col should be the
-        first component of an index.
+    For such predicates all we want to know if the ndv is
+    available for all the fields in the multiple equality or not.
   */
   Item_equal_fields_iterator it(*this);
   while (it++)
   {
     Field *field= it.get_curr_field();
-    if (!(field->is_covered_by_keys() ||  // (1)
-          field->is_covered_by_eits()))   // (2)
+    if (!field->is_statistics_available())
       return true;
   }
   return false;
