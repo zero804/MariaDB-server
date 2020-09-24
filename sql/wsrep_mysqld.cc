@@ -39,6 +39,7 @@
 #include "log_event.h"
 #include "sql_plugin.h"                         /* wsrep_plugins_pre_init() */
 #include <vector>
+#include "debug_sync.h"
 
 wsrep_t *wsrep                  = NULL;
 /*

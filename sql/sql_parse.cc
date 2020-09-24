@@ -8897,6 +8897,43 @@ kill_one_thread(THD *thd, longlong id, killed_state kill_signal, killed_type typ
   DBUG_ENTER("kill_one_thread");
   DBUG_PRINT("enter", ("id: %lld  signal: %u", id, (uint) kill_signal));
 
+#ifdef WITH_WSREP
+  DEBUG_SYNC(thd, "wsrep_kill_one_thread_started");
+  /* first mark wsrep victim to avoid conflict with possible ongoing BF abort */
+  if (WSREP(thd) )
+  {
+    if (id && (tmp= find_thread_by_id(id, type == KILL_TYPE_QUERY)))
+    {
+      if (tmp->wsrep_aborter)
+      {
+        /* victim is in hit list already, bail out */
+        WSREP_DEBUG("Victim has wsrep aborter in kill_one_thread: "
+		    "%lu, skipping awake()",
+                    tmp->wsrep_aborter);
+        mysql_mutex_unlock(&tmp->LOCK_thd_data);
+        DBUG_RETURN(0);
+      }
+      else
+      {
+        /*
+           let go LOCK_thd_data and mark victim for abort by us,
+           with no mutexes held. We initiate victim marking from innodb
+           to use same mutex locking protocol as innodb high priority transactions
+
+           it is still possible that some other thread gets in front of us
+           and marks this victim, we will see who is the actual killer thread
+           before we would call THD::awake()
+         */
+        mysql_mutex_unlock(&tmp->LOCK_thd_data);
+	/* Here we have a gap as we are not holding any mutexes. */
+        DEBUG_SYNC(thd, "wsrep_kill_one_thread_before_kill_query");
+        ha_kill_query(tmp, THD_WSREP_MARK_VICTIM);
+      }
+    }
+  }
+#endif /* WITH_WSREP */
+
+  /* continue with the usual victim kill procecedure */
   if (id && (tmp= find_thread_by_id(id, type == KILL_TYPE_QUERY)))
   {
     /*
@@ -8924,7 +8961,25 @@ kill_one_thread(THD *thd, longlong id, killed_state kill_signal, killed_type typ
         thd->security_ctx->user_matches(tmp->security_ctx)) &&
 	!wsrep_thd_is_BF(tmp, false))
     {
-      tmp->awake(kill_signal);
+#ifdef WITH_WSREP
+      if (tmp->wsrep_aborter && tmp->wsrep_aborter != tmp->thread_id)
+      {
+        /* victim is in hit list already, bail out */
+        WSREP_DEBUG("Victim has wsrep aborter in kill_one_thread: "
+                    "%lu, skipping awake()",
+                    tmp->wsrep_aborter);
+      }
+      else
+#endif /* WITH_WSREP */
+      {
+        /*
+          At this point we are holding victim_thread->LOCK_thd_data
+          and wsrep_aborter should be set.
+        */
+        DEBUG_SYNC(thd, "wsrep_kill_one_thread_before_awake");
+        WSREP_DEBUG("Victim %lu killed by kill_one_thread", id);
+        tmp->awake(kill_signal);
+      }
       error=0;
     }
     else
