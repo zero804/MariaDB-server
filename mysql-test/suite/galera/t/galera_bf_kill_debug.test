@@ -2,50 +2,299 @@
 --source include/have_innodb.inc
 --source include/have_debug.inc
 --source include/have_debug_sync.inc
+--source include/force_restart.inc
 
 #
-# Test case 7:
-# 1. Start a transaction on node_2,
-#    and leave it pending while holding a row locked
-# 2. set sync point pause applier
-# 3. send a conflicting write on node_1, it will pause
-#    at the sync point
-# 4. though another connection to node_2, kill the local
-#    transaction
+# This test unit makes sure that it is not possible to have
+# (1) User SQL-command KILL and
+# (2) Brute Force (BF) lock conflict resolution kill
+#
+# executed concurrently so that server would hang. Instead
+# idea is that only the first one setting thd->wsrep_aborter
+# should be able to complete and other concurrent kill
+# will bail out.
 #
 
+#
+# Test case 1: Make sure user KILL SQL-command only kills victim thread
+#
+--echo #
+--echo # Test case 1
+--echo #
 --connection node_2
 CREATE TABLE t1(a int not null primary key auto_increment,b int) engine=InnoDB;
-insert into t1 values (NULL,1);
-
 #
 # connection node_2a runs a local transaction, that is victim of BF abort
 # and victim of KILL command by connection node_2
 #
 --connect node_2a, 127.0.0.1, root, , test, $NODE_MYPORT_2
 --connection node_2a
-truncate t1;
 insert into t1 values (1,0);
 
-# start a transaction that will conflict with later applier
+# start a victim transaction that will conflict with later applier
 begin;
 update t1 set b=2 where a=1;
-
+#
+# Make sure update has started
+#
 --connection node_2
 set session wsrep_sync_wait=0;
 --let $wait_condition = SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.PROCESSLIST WHERE USER = 'root' AND COMMAND = 'Sleep' LIMIT 1
 --source include/wait_condition.inc
-
+#
+# Get thread ID for update transaction
+#
 --let $k_thread = `SELECT ID FROM INFORMATION_SCHEMA.PROCESSLIST WHERE USER = 'root' AND COMMAND = 'Sleep' LIMIT 1`
-
-# connection node_2b is for controlling debug syn points
-# first set a sync point for applier, to pause during BF aborting
-# and before THD::awake would be called
+#
+# pause KILL execution before awake
+#
+SET DEBUG_SYNC= 'wsrep_kill_one_thread_before_awake SIGNAL awake_reached WAIT_FOR continue_kill';
+--disable_query_log
+--send_eval KILL $k_thread
+--enable_query_log
+#
+# connection node_2b is for controlling debug sync points
+# wait until KILL execution has reached sync point
 #
 --connect node_2b, 127.0.0.1, root, , test, $NODE_MYPORT_2
 --connection node_2b
-SET GLOBAL debug_dbug = "d,sync.before_wsrep_thd_abort";
+SET DEBUG_SYNC='now WAIT_FOR awake_reached';
+#
+# replicate an update, which is conflicting with
+# victim at node_2a. However, this BF can't do
+# lock conflict resolution as we have already started
+# same victim_thread killing on user KILL execution.
+#
+--connection node_1
+select * from t1;
+--send update t1 set b= 5 where a=1;
 
+--connection node_2b
+--echo # release KILL operator
+SET GLOBAL debug_dbug = "";
+SET DEBUG_SYNC = "now SIGNAL continue_kill";
+
+--connection node_2
+--reap
+COMMIT;
+
+--connection node_2a
+--error 2013
+COMMIT;
+
+--connection node_1
+--reap
+SELECT * FROM t1;
+DROP TABLE t1;
+
+--connection node_2b
+SET DEBUG_SYNC = "RESET";
+
+--disconnect node_2a
+--disconnect node_2b
+#
+# Test case 2: Execute user KILL SQL-query to gap in kill_one_thread
+# where we do not have any mutexes and victim_thread->wsrep_aborter
+# is not set. But even then BF kill should be only one killing victim.
+#
+--echo #
+--echo # Test case 2
+--echo #
+--connection node_2
+CREATE TABLE t1(a int not null primary key auto_increment,b int) engine=InnoDB;
+#
+# connection node_2a runs a local transaction, that is victim of BF abort
+# and victim of KILL command by connection node_2
+#
+--connect node_2a, 127.0.0.1, root, , test, $NODE_MYPORT_2
+--connection node_2a
+insert into t1 values (1,0);
+
+# start a victim transaction that will conflict with later applier
+begin;
+update t1 set b=2 where a=1;
+#
+# Make sure update has started
+#
+--connection node_2
+set session wsrep_sync_wait=0;
+--let $wait_condition = SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.PROCESSLIST WHERE USER = 'root' AND COMMAND = 'Sleep' LIMIT 1
+--source include/wait_condition.inc
+#
+# Get thread ID for update transaction
+#
+--let $k_thread = `SELECT ID FROM INFORMATION_SCHEMA.PROCESSLIST WHERE USER = 'root' AND COMMAND = 'Sleep' LIMIT 1`
+#
+# pause KILL execution before ha_kill_query
+#
+SET DEBUG_SYNC= 'wsrep_kill_one_thread_before_kill_query SIGNAL kill_query_reached WAIT_FOR continue_kill';
+--disable_query_log
+--send_eval KILL $k_thread
+--enable_query_log
+#
+# connection node_2b is for controlling debug sync points
+# wait until KILL execution has reached sync point
+#
+--connect node_2b, 127.0.0.1, root, , test, $NODE_MYPORT_2
+--connection node_2b
+SET DEBUG_SYNC='now WAIT_FOR kill_query_reached';
+#
+# replicate an update, which is conflicting with
+# victim at node_2a. BF kill should handle it
+#
+--connection node_1
+select * from t1;
+--send update t1 set b= 5 where a=1;
+
+--connection node_2b
+--echo # release KILL operator
+SET GLOBAL debug_dbug = "";
+SET DEBUG_SYNC = "now SIGNAL continue_kill";
+
+--connection node_2
+--reap
+
+--connection node_2a
+--error 2013,1213
+COMMIT;
+
+--connection node_1
+--reap
+SELECT * FROM t1;
+DROP TABLE t1;
+
+--connection node_2b
+SET DEBUG_SYNC = "RESET";
+
+--disconnect node_2a
+--disconnect node_2b
+#
+# Test case 3: Execute user KILL SQL-query to sync point just
+# before thd->awake. Make sure that bf kill does not proceed
+# to kill victim thread.
+#
+--echo #
+--echo # Test case 3
+--echo #
+--connection node_2
+CREATE TABLE t1(a int not null primary key auto_increment,b int) engine=InnoDB;
+#
+# connection node_2a runs a local transaction, that is victim of BF abort
+# and victim of KILL command by connection node_2
+#
+--connect node_2a, 127.0.0.1, root, , test, $NODE_MYPORT_2
+--connection node_2a
+insert into t1 values (1,0);
+
+# start a victim transaction that will conflict with later applier
+begin;
+update t1 set b=2 where a=1;
+#
+# Make sure update has started
+#
+--connection node_2
+set session wsrep_sync_wait=0;
+--let $wait_condition = SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.PROCESSLIST WHERE USER = 'root' AND COMMAND = 'Sleep' LIMIT 1
+--source include/wait_condition.inc
+#
+# Get thread ID for update transaction
+#
+--let $k_thread = `SELECT ID FROM INFORMATION_SCHEMA.PROCESSLIST WHERE USER = 'root' AND COMMAND = 'Sleep' LIMIT 1`
+#
+# pause KILL execution before awake
+#
+SET DEBUG_SYNC= 'wsrep_kill_one_thread_before_awake SIGNAL awake_reached WAIT_FOR continue_kill';
+--disable_query_log
+--send_eval KILL $k_thread
+--enable_query_log
+#
+# connection node_2b is for controlling debug sync points
+# wait until KILL has reached sync point
+#
+--connect node_2b, 127.0.0.1, root, , test, $NODE_MYPORT_2
+--connection node_2b
+SET DEBUG_SYNC='now WAIT_FOR awake_reached';
+#
+# replicate an update, which will run on applier as BF.
+# However, as KILL has reserved kill rights, BF kill will
+# not be executed.
+#
+--connection node_1
+select * from t1;
+update t1 set b= 5 where a=1;
+
+--connection node_2b
+--echo # release KILL operator
+SET GLOBAL debug_dbug = "";
+SET DEBUG_SYNC = "now SIGNAL continue_kill";
+
+--connection node_2
+--reap
+
+--connection node_2a
+--error 2013
+COMMIT;
+
+--connection node_1
+SELECT * FROM t1;
+DROP TABLE t1;
+
+--connection node_2b
+SET DEBUG_SYNC = "RESET";
+
+--disconnect node_2a
+--disconnect node_2b
+#
+# Test case 4: Execute user KILL SQL-query to gap in kill_one_thread
+# where we do not have any mutexes and victim_thread->wsrep_aborter
+# is not set. Execute BF kill until we have set victim_thread->aborter
+# and make sure that user KILL can't kill victim thread.
+#
+--echo #
+--echo # Test case 4
+--echo #
+--connection node_2
+CREATE TABLE t1(a int not null primary key auto_increment,b int) engine=InnoDB;
+#
+# connection node_2a runs a local transaction, that is victim of BF abort
+# and victim of KILL command by connection node_2
+#
+--connect node_2a, 127.0.0.1, root, , test, $NODE_MYPORT_2
+--connection node_2a
+insert into t1 values (1,0);
+
+# start a victim transaction that will conflict with later applier
+begin;
+update t1 set b=2 where a=1;
+#
+# Make sure update has started
+#
+--connection node_2
+set session wsrep_sync_wait=0;
+--let $wait_condition = SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.PROCESSLIST WHERE USER = 'root' AND COMMAND = 'Sleep' LIMIT 1
+--source include/wait_condition.inc
+#
+# Get thread ID for update transaction
+#
+--let $k_thread = `SELECT ID FROM INFORMATION_SCHEMA.PROCESSLIST WHERE USER = 'root' AND COMMAND = 'Sleep' LIMIT 1`
+#
+# pause KILL execution before ha_kill_query
+#
+SET DEBUG_SYNC= 'wsrep_kill_one_thread_before_kill_query SIGNAL kill_query_reached WAIT_FOR continue_kill';
+--disable_query_log
+--send_eval KILL $k_thread
+--enable_query_log
+#
+# connection node_2b is for controlling debug sync points
+# wait until kill reached sync point
+--connect node_2b, 127.0.0.1, root, , test, $NODE_MYPORT_2
+--connection node_2b
+SET DEBUG_SYNC='now WAIT_FOR kill_query_reached';
+#
+# Set a sync point for applier, to pause during BF aborting
+# and before THD::awake would be called
+#
+SET GLOBAL debug_dbug = "d,sync.wsrep_innobase_kill_one_trx_before_awake";
 #
 # replicate an update, which will BF abort the victim node_2a
 # however, while applier in node 2 is handling the abort,
@@ -53,88 +302,126 @@ SET GLOBAL debug_dbug = "d,sync.before_wsrep_thd_abort";
 #
 --connection node_1
 select * from t1;
-update t1 set b= 1 where a=1;
-
+update t1 set b= 5 where a=1;
 #
 # wait until the applying of above update has reached the sync point
 # in node 2
 #
 --connection node_2b
-SET SESSION DEBUG_SYNC = "now WAIT_FOR sync.before_wsrep_thd_abort_reached";
+SET SESSION DEBUG_SYNC = "now WAIT_FOR sync.wsrep_innobase_kill_one_trx_before_awake";
 
---connection node_2
-#
-# pause KILL execution before awake
-#
-SET DEBUG_SYNC= 'before_awake_no_mutex SIGNAL awake_reached WAIT_FOR continue_kill';
---disable_query_log
---send_eval KILL $k_thread
---enable_query_log
-
-
---connection node_2b
-SET DEBUG_SYNC='now WAIT_FOR awake_reached';
-
-# release applier and KILL operator
 SET GLOBAL debug_dbug = "";
-SET DEBUG_SYNC = "now SIGNAL signal.before_wsrep_thd_abort";
+--echo # release bf kill
+set DEBUG_SYNC = "now SIGNAL signal.wsrep_innobase_kill_one_trx_before_awake";
+
+--connection node_2a
+--error 1213
+COMMIT;
+SELECT * FROM t1;
+
+--echo # release KILL operator
 SET DEBUG_SYNC = "now SIGNAL continue_kill";
 
 --connection node_2
 --reap
-
---connection node_2a
---error 0,1213
-select * from t1;
-
---connection node_2
-SET DEBUG_SYNC = "RESET";
-
-drop table t1;
-
---disconnect node_2a
-#
-# Test case 7:
-# run a transaction in node 2, and set a sync point to pause the transaction
-# in commit phase.
-# Through another connection to node 2, kill the committing transaction by
-# KILL QUERY command
-#
-
---connect node_2a, 127.0.0.1, root, , test, $NODE_MYPORT_2
---connection node_2a
---let $connection_id = `SELECT CONNECTION_ID()`
-
-CREATE TABLE t1 (i int primary key);
-
-# Set up sync point
-SET DEBUG_SYNC = "before_wsrep_ordered_commit SIGNAL bwoc_reached WAIT_FOR bwoc_continue";
-
-# Send insert which will block in the sync point above
---send INSERT INTO t1 VALUES (1)
-
---connection node_2
-SET DEBUG_SYNC = "now WAIT_FOR bwoc_reached";
-
---disable_query_log
---disable_result_log
-# victim has passed the point of no return, kill is not possible anymore
---eval KILL QUERY $connection_id
---enable_result_log
---enable_query_log
-
-SET DEBUG_SYNC = "now SIGNAL bwoc_continue";
-SET DEBUG_SYNC='RESET';
---connection node_2a
---error 0,1213
---reap
-
---connection node_2
-# victim was able to complete the INSERT
-select * from t1;
-
---disconnect node_2a
+COMMIT;
+SELECT * FROM t1;
 
 --connection node_1
-drop table t1;
+COMMIT;
+SELECT * from t1;
+DROP TABLE t1;
 
+--connection node_2b
+SET DEBUG_SYNC = "RESET";
+
+--disconnect node_2a
+--disconnect node_2b
+#
+# Test case 5: Make sure that only bf lock conflict resolution
+# kills victim thread.
+#
+--echo #
+--echo # Test case 5
+--echo #
+--connection node_2
+CREATE TABLE t1(a int not null primary key auto_increment,b int) engine=InnoDB;
+#
+# connection node_2a runs a local transaction, that is victim of BF abort
+# and victim of KILL command by connection node_2
+#
+--connect node_2a, 127.0.0.1, root, , test, $NODE_MYPORT_2
+--connection node_2a
+insert into t1 values (1,0);
+
+# start a victim transaction that will conflict with later applier
+begin;
+update t1 set b=2 where a=1;
+#
+# Make sure update has started
+#
+--connection node_2
+set session wsrep_sync_wait=0;
+--let $wait_condition = SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.PROCESSLIST WHERE USER = 'root' AND COMMAND = 'Sleep' LIMIT 1
+--source include/wait_condition.inc
+#
+# Get thread ID for update transaction
+#
+--let $k_thread = `SELECT ID FROM INFORMATION_SCHEMA.PROCESSLIST WHERE USER = 'root' AND COMMAND = 'Sleep' LIMIT 1`
+#
+# connection node_2b is for controlling debug sync points
+# first set a sync point for applier, to pause during BF aborting
+# and before THD::awake would be called
+#
+--connect node_2b, 127.0.0.1, root, , test, $NODE_MYPORT_2
+--connection node_2b
+SET GLOBAL debug_dbug = "d,sync.wsrep_innobase_kill_one_trx_before_LOCK_thd_data";
+#
+# replicate an update, which will BF abort the victim node_2a
+# however, while applier in node 2 is handling the abort,
+# it will pause in sync point set by node_2b
+#
+--connection node_1
+select * from t1;
+update t1 set b= 5 where a=1;
+#
+# wait until the applying of above update has reached the sync point
+# in node 2
+#
+--connection node_2b
+SET SESSION DEBUG_SYNC = "now WAIT_FOR sync.wsrep_innobase_kill_one_trx_before_LOCK_thd_data";
+#
+# pause KILL execution before awake
+#
+--connection node_2
+SET DEBUG_SYNC= 'wsrep_kill_one_thread_started SIGNAL awake_reached WAIT_FOR continue_kill';
+--disable_query_log
+--send_eval KILL $k_thread
+--enable_query_log
+
+--connection node_2b
+SET DEBUG_SYNC='now WAIT_FOR awake_reached';
+
+SET GLOBAL debug_dbug = "";
+--connection node_2b
+--echo # release KILL operator
+SET DEBUG_SYNC = "now SIGNAL continue_kill";
+--echo # Release applier
+SET DEBUG_SYNC = "now SIGNAL signal.wsrep_innobase_kill_one_trx_before_LOCK_thd_data";
+
+--connection node_2a
+--error ER_LOCK_DEADLOCK
+COMMIT;
+
+--connection node_2
+--reap
+
+--connection node_1
+SELECT * FROM t1;
+DROP TABLE t1;
+
+--connection node_2b
+SET DEBUG_SYNC = "RESET";
+
+--disconnect node_2a
+--disconnect node_2b

@@ -48,6 +48,7 @@
 #include <string>
 #include "log_event.h"
 #include "sql_connect.h"
+#include "debug_sync.h"
 #include "thread_cache.h"
 
 #include <sstream>
