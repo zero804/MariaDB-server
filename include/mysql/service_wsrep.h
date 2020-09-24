@@ -84,9 +84,9 @@ extern struct wsrep_service_st {
   my_bool                     (*wsrep_get_debug_func)();
   void                        (*wsrep_commit_ordered_func)(MYSQL_THD thd);
   my_bool                     (*wsrep_thd_is_applying_func)(const MYSQL_THD thd);
-  bool                        (*wsrep_thd_set_wsrep_aborter_func)(MYSQL_THD bf_thd, MYSQL_THD thd);
   void                        (*wsrep_report_bf_lock_wait_func)(const MYSQL_THD thd,
                                                                 unsigned long long trx_id);
+  bool                        (*wsrep_thd_set_wsrep_aborter_func)(MYSQL_THD bf_thd, MYSQL_THD thd);
 } *wsrep_service;
 
 #define MYSQL_SERVICE_WSREP_INCLUDED
@@ -104,6 +104,7 @@ extern struct wsrep_service_st {
 #define wsrep_prepare_key_for_innodb(A,B,C,D,E,F,G) wsrep_service->wsrep_prepare_key_for_innodb_func(A,B,C,D,E,F,G)
 #define wsrep_thd_LOCK(T) wsrep_service->wsrep_thd_LOCK_func(T)
 #define wsrep_thd_UNLOCK(T) wsrep_service->wsrep_thd_UNLOCK_func(T)
+#define wsrep_thd_awake(T,S) wsrep_service->wsrep_thd_awake_func(T,S)
 #define wsrep_thd_query(T) wsrep_service->wsrep_thd_query_func(T)
 #define wsrep_thd_retry_counter(T) wsrep_service->wsrep_thd_retry_counter_func(T)
 #define wsrep_thd_ignore_table(T) wsrep_service->wsrep_thd_ignore_table_func(T)
@@ -127,8 +128,8 @@ extern struct wsrep_service_st {
 #define wsrep_get_debug() wsrep_service->wsrep_get_debug_func()
 #define wsrep_commit_ordered(T) wsrep_service->wsrep_commit_ordered_func(T)
 #define wsrep_thd_is_applying(T) wsrep_service->wsrep_thd_is_applying_func(T)
-#define wsrep_thd_set_wsrep_aborter(T) wsrep_service->wsrep_thd_set_wsrep_aborter_func(T1, T2)
 #define wsrep_report_bf_lock_wait(T,I) wsrep_service->wsrep_report_bf_lock_wait(T,I)
+#define wsrep_thd_set_wsrep_aborter(T1, T2) wsrep_service->wsrep_thd_set_wsrep_aborter_func(T1, T2)
 #else
 
 #define MYSQL_SERVICE_WSREP_STATIC_INCLUDED
@@ -151,6 +152,8 @@ my_bool get_wsrep_recovery();
 void wsrep_thd_auto_increment_variables(THD *thd, unsigned long long *offset, unsigned long long *increment);
 bool wsrep_thd_ignore_table(MYSQL_THD thd);
 void wsrep_set_data_home_dir(const char *data_dir);
+/* set wsrep_aborter for the target THD */
+extern "C" bool wsrep_thd_set_wsrep_aborter(MYSQL_THD bf_thd, MYSQL_THD victim_thd);
 
 /* from mysql wsrep-lib */
 #include "my_global.h"
@@ -222,8 +225,9 @@ extern "C" my_bool wsrep_get_debug();
 
 extern "C" void wsrep_commit_ordered(MYSQL_THD thd);
 extern "C" my_bool wsrep_thd_is_applying(const MYSQL_THD thd);
-extern "C" bool wsrep_thd_set_wsrep_aborter(MYSQL_THD bf_thd, MYSQL_THD victim_thd);
 extern "C" void wsrep_report_bf_lock_wait(const THD *thd,
                                           unsigned long long trx_id);
+/* set wsrep_aborter for the target THD */
+extern "C" bool wsrep_thd_set_wsrep_aborter(MYSQL_THD bf_thd, MYSQL_THD victim_thd);
 #endif
 #endif /* MYSQL_SERVICE_WSREP_INCLUDED */

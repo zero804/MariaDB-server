@@ -48,26 +48,5 @@ a	b
 2	1
 disconnect node_2a;
 disconnect node_2b;
-connect node_2a, 127.0.0.1, root, , test, $NODE_MYPORT_2;
-connection node_2a;
-SET SESSION wsrep_on=OFF;
-begin;
-update t1 set a =5, b=2;
-connection node_2;
-ALTER TABLE t1 ADD UNIQUE KEY b3(b);
-select * from t1;
-a	b
-2	1
-disconnect node_2a;
-connect node_2a, 127.0.0.1, root, , test, $NODE_MYPORT_2;
-connection node_2a;
-SET SESSION wsrep_on=OFF;
-begin;
-update t1 set a =5, b=2;
-connection node_2;
-select * from t1;
-a	b
-2	1
-disconnect node_2a;
 connection node_1;
 drop table t1;

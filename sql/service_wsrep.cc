@@ -326,18 +326,6 @@ extern "C" void wsrep_commit_ordered(THD *thd)
   }
 }
 
-extern "C" bool wsrep_thd_set_wsrep_aborter(THD *bf_thd, THD *victim_thd)
-{
-  WSREP_DEBUG("wsrep_thd_set_wsrep_aborter called");
-  mysql_mutex_assert_owner(&victim_thd->LOCK_thd_data);
-  if (victim_thd->wsrep_aborter && victim_thd->wsrep_aborter != bf_thd->thread_id)
-  {
-    return true;
-  }
-  victim_thd->wsrep_aborter = bf_thd->thread_id;
-  return false;
-}
-
 extern "C" void wsrep_report_bf_lock_wait(const THD *thd,
                                           unsigned long long trx_id)
 {

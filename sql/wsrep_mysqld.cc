@@ -46,6 +46,7 @@
 #include <cstdlib>
 #include <string>
 #include "log_event.h"
+#include "debug_sync.h"
 
 #include <sstream>
 
