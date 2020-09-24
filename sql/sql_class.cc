@@ -653,7 +653,8 @@ THD::THD(my_thread_id id, bool is_wsrep_applier)
    wsrep_po_handle(WSREP_PO_INITIALIZER),
    wsrep_po_cnt(0),
    wsrep_apply_format(0),
-   wsrep_ignore_table(false)
+   wsrep_ignore_table(false),
+   wsrep_aborter(0)
 #endif
 {
   ulong tmp;
@@ -1242,6 +1243,7 @@ void THD::init()
   wsrep_replicate_GTID    = false;
   wsrep_skip_wsrep_GTID   = false;
   wsrep_split_flag        = false;
+  wsrep_aborter           = 0;
 #endif /* WITH_WSREP */
 
   if (variables.sql_log_bin)
@@ -1838,9 +1840,14 @@ void THD::awake_no_mutex(killed_state state_to_set)
       MYSQL_CALLBACK(scheduler, post_kill_notification, (this));
   }
 
-  /* Interrupt target waiting inside a storage engine. */
-  if (state_to_set != NOT_KILLED)
-    ha_kill_query(this, thd_kill_level(this));
+#ifdef WITH_WSREP
+  if (wsrep_aborter == 0)
+#endif
+  {
+    /* Interrupt target waiting inside a storage engine. */
+    if (state_to_set != NOT_KILLED)
+      ha_kill_query(this, thd_kill_level(this));
+  }
 
   /* Broadcast a condition to kick the target if it is waiting on it. */
   if (mysys_var)
@@ -2066,13 +2073,18 @@ void THD::reset_killed()
     its not done during an awake() call.
   */
   DBUG_ENTER("reset_killed");
+  mysql_mutex_lock(&LOCK_thd_data);
+  mysql_mutex_lock(&LOCK_thd_kill);
   if (killed != NOT_KILLED)
   {
-    mysql_mutex_lock(&LOCK_thd_kill);
     killed= NOT_KILLED;
     killed_err= 0;
-    mysql_mutex_unlock(&LOCK_thd_kill);
   }
+#ifdef WITH_WSREP
+  wsrep_aborter= 0;
+#endif /* WITH_WSREP */
+  mysql_mutex_unlock(&LOCK_thd_data);
+  mysql_mutex_unlock(&LOCK_thd_kill);
   DBUG_VOID_RETURN;
 }
 

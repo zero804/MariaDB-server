@@ -8942,12 +8942,13 @@ void add_join_natural(TABLE_LIST *a, TABLE_LIST *b, List<String> *using_fields,
 
   @param id  Identifier of the thread we're looking for
   @param query_id If true, search by query_id instead of thread_id
+  @param wsrep If true, LOCK_thd_data is locked.
 
   @return NULL    - not found
           pointer - thread found, and its LOCK_thd_kill is locked.
 */
 
-THD *find_thread_by_id(longlong id, bool query_id)
+THD *find_thread_by_id(longlong id, bool query_id, bool wsrep)
 {
   THD *tmp;
   mysql_mutex_lock(&LOCK_thread_count); // For unlink from list
@@ -8958,6 +8959,7 @@ THD *find_thread_by_id(longlong id, bool query_id)
       continue;
     if (id == (query_id ? tmp->query_id : (longlong) tmp->thread_id))
     {
+      if (wsrep) mysql_mutex_lock(&tmp->LOCK_thd_data);
       mysql_mutex_lock(&tmp->LOCK_thd_kill);    // Lock from delete
       break;
     }
@@ -8984,10 +8986,51 @@ kill_one_thread(THD *thd, longlong id, killed_state kill_signal, killed_type typ
 {
   THD *tmp;
   uint error= (type == KILL_TYPE_QUERY ? ER_NO_SUCH_QUERY : ER_NO_SUCH_THREAD);
+  bool wsrep= false;
   DBUG_ENTER("kill_one_thread");
   DBUG_PRINT("enter", ("id: %lld  signal: %u", id, (uint) kill_signal));
 
-  if (id && (tmp= find_thread_by_id(id, type == KILL_TYPE_QUERY)))
+#ifdef WITH_WSREP
+  DEBUG_SYNC(thd, "wsrep_kill_one_thread_started");
+  /* first mark wsrep victim to avoid conflict with possible ongoing BF abort */
+  if (WSREP(thd) )
+  {
+    wsrep= true;
+    if (id && (tmp= find_thread_by_id(id, type == KILL_TYPE_QUERY, true)))
+    {
+      if (tmp->wsrep_aborter)
+      {
+        /* victim is in hit list already, bail out */
+        WSREP_DEBUG("Victim has wsrep aborter in kill_one_thread: "
+                    "%lu, skipping awake()",
+                    tmp->wsrep_aborter);
+        mysql_mutex_unlock(&tmp->LOCK_thd_kill);
+        mysql_mutex_unlock(&tmp->LOCK_thd_data);
+        DBUG_RETURN(0);
+      }
+      else
+      {
+        /*
+           let go LOCK_thd_data and mark victim for abort by us,
+           with no mutexes held. We initiate victim marking from innodb
+           to use same mutex locking protocol as innodb high priority transactions
+
+           it is still possible that some other thread gets in front of us
+           and marks this victim, we will see who is the actual killer thread
+           before we would call THD::awake()
+         */
+        mysql_mutex_unlock(&tmp->LOCK_thd_kill);
+        mysql_mutex_unlock(&tmp->LOCK_thd_data);
+        /* Here we have a gap as we are not holding any mutexes. */
+        DEBUG_SYNC(thd, "wsrep_kill_one_thread_before_kill_query");
+        ha_kill_query(tmp, THD_WSREP_MARK_VICTIM);
+      }
+    }
+  }
+#endif /* WITH_WSREP */
+
+  /* continue with the usual victim kill procecedure */
+  if (id && (tmp= find_thread_by_id(id, type == KILL_TYPE_QUERY, wsrep)))
   {
     /*
       If we're SUPER, we can KILL anything, including system-threads.
@@ -9014,13 +9057,33 @@ kill_one_thread(THD *thd, longlong id, killed_state kill_signal, killed_type typ
         thd->security_ctx->user_matches(tmp->security_ctx)) &&
 	!wsrep_thd_is_BF(tmp, false))
     {
-      tmp->awake_no_mutex(kill_signal);
+#ifdef WITH_WSREP
+      if (tmp->wsrep_aborter && tmp->wsrep_aborter != tmp->thread_id)
+      {
+        /* victim is in hit list already, bail out */
+        WSREP_DEBUG("Victim has wsrep aborter in kill_one_thread: "
+                    "%lu, skipping awake()",
+                    tmp->wsrep_aborter);
+      }
+      else
+#endif /* WITH_WSREP */
+      {
+        /*
+          At this point we are holding victim_thread->LOCK_thd_data
+          and wsrep_aborter should be set.
+        */
+        DEBUG_SYNC(thd, "wsrep_kill_one_thread_before_awake");
+        WSREP_DEBUG("Victim %lu killed by kill_one_thread", id);
+        tmp->awake_no_mutex(kill_signal);
+      }
       error=0;
     }
     else
       error= (type == KILL_TYPE_QUERY ? ER_KILL_QUERY_DENIED_ERROR :
                                         ER_KILL_DENIED_ERROR);
+
     mysql_mutex_unlock(&tmp->LOCK_thd_kill);
+    if (wsrep) mysql_mutex_unlock(&tmp->LOCK_thd_data);
   }
   DBUG_PRINT("exit", ("%d", error));
   DBUG_RETURN(error);

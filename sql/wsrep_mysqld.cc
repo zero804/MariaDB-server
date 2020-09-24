@@ -37,6 +37,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include "log_event.h"
+#include "debug_sync.h"
 
 wsrep_t *wsrep                  = NULL;
 /*
