@@ -889,4 +889,19 @@ DROP TABLE t2;
 DROP TABLE t3;
 DROP TABLE t4;
 
+--echo #
+--echo # InnoDB: Failing assertion: result != FTS_INVALID in
+--echo #	fts_trx_row_get_new_state
+--echo #
+CREATE TABLE t1 (pk INT PRIMARY KEY,
+		 a VARCHAR(1), b VARCHAR(1),
+		 KEY (a), FULLTEXT (a), index(b), FULLTEXT(b)) ENGINE=InnoDB;
+INSERT INTO t1 VALUES (1,'i','i'),(2,'i','i');
+ALTER TABLE t1 ADD FOREIGN KEY (a) REFERENCES t1 (b) ON DELETE SET NULL;
+SHOW CREATE TABLE t1;
+DELETE FROM t1;
+CHECK TABLE t1;
+SELECT * FROM t1 WHERE MATCH(b) against ('i');
+DROP TABLE t1;
+
 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;

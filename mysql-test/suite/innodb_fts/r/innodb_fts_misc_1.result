@@ -919,4 +919,33 @@ DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
 DROP TABLE t4;
+#
+# InnoDB: Failing assertion: result != FTS_INVALID in
+#	fts_trx_row_get_new_state
+#
+CREATE TABLE t1 (pk INT PRIMARY KEY,
+a VARCHAR(1), b VARCHAR(1),
+KEY (a), FULLTEXT (a), index(b), FULLTEXT(b)) ENGINE=InnoDB;
+INSERT INTO t1 VALUES (1,'i','i'),(2,'i','i');
+ALTER TABLE t1 ADD FOREIGN KEY (a) REFERENCES t1 (b) ON DELETE SET NULL;
+SHOW CREATE TABLE t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `pk` int(11) NOT NULL,
+  `a` varchar(1) DEFAULT NULL,
+  `b` varchar(1) DEFAULT NULL,
+  PRIMARY KEY (`pk`),
+  KEY `a` (`a`),
+  KEY `b` (`b`),
+  FULLTEXT KEY `a_2` (`a`),
+  FULLTEXT KEY `b_2` (`b`),
+  CONSTRAINT `t1_ibfk_1` FOREIGN KEY (`a`) REFERENCES `t1` (`b`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+DELETE FROM t1;
+CHECK TABLE t1;
+Table	Op	Msg_type	Msg_text
+test.t1	check	status	OK
+SELECT * FROM t1 WHERE MATCH(b) against ('i');
+pk	a	b
+DROP TABLE t1;
 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;

@@ -1214,6 +1214,9 @@ struct dict_foreign_t{
 
 	dict_vcol_set*	v_cols;		/*!< set of virtual columns affected
 					by foreign key constraint. */
+	/** Check whether fulltext index gets affected by foreign key
+	constraint. */
+	bool affects_fulltext();
 };
 
 std::ostream&
