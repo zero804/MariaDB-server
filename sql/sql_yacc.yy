@@ -68,6 +68,7 @@
 #include "sql_sequence.h"
 #include "my_base.h"
 #include "sql_type_json.h"
+#include "table_function.h"
 
 /* this is to get the bison compilation windows warnings out */
 #ifdef _MSC_VER
@@ -207,6 +208,7 @@ void _CONCAT_UNDERSCORED(turn_parser_debug_on,yyparse)()
   Lex_for_loop_st for_loop;
   Lex_for_loop_bounds_st for_loop_bounds;
   Lex_trim_st trim;
+  Json_table_column::On_response json_on_response;
   vers_history_point_t vers_history_point;
   struct
   {
@@ -226,6 +228,7 @@ void _CONCAT_UNDERSCORED(turn_parser_debug_on,yyparse)()
   /* pointers */
   Lex_ident_sys *ident_sys_ptr;
   Create_field *create_field;
+  Json_table_column *json_table_column;
   Spvar_definition *spvar_definition;
   Row_definition_list *spvar_definition_list;
   const Type_handler *type_handler;
@@ -494,6 +497,7 @@ End SQL_MODE_ORACLE_SPECIFIC */
 %token  <kwd> ELSEIF_MARIADB_SYM
 %token  <kwd> ELSE                          /* SQL-2003-R */
 %token  <kwd> ELSIF_ORACLE_SYM              /* PLSQL-R    */
+%token  <kwd> EMPTY_SYM                     /* SQL-2016-R */
 %token  <kwd> ENCLOSED
 %token  <kwd> ESCAPED
 %token  <kwd> EXCEPT_SYM                    /* SQL-2003-R */
@@ -512,6 +516,7 @@ End SQL_MODE_ORACLE_SPECIFIC */
 %token  <kwd> GROUP_CONCAT_SYM
 %token  <rwd> JSON_ARRAYAGG_SYM
 %token  <rwd> JSON_OBJECTAGG_SYM
+%token  <rwd> JSON_TABLE_SYM
 %token  <kwd> GROUP_SYM                     /* SQL-2003-R */
 %token  <kwd> HAVING                        /* SQL-2003-R */
 %token  <kwd> HOUR_MICROSECOND_SYM
@@ -569,6 +574,7 @@ End SQL_MODE_ORACLE_SPECIFIC */
 %token  <kwd> MOD_SYM                       /* SQL-2003-N */
 %token  <kwd> NATURAL                       /* SQL-2003-R */
 %token  <kwd> NEG
+%token  <kwd> NESTED_SYM                    /* SQL-2003-N */
 %token  <kwd> NOT_SYM                       /* SQL-2003-R */
 %token  <kwd> NO_WRITE_TO_BINLOG
 %token  <kwd> NOW_SYM
@@ -580,6 +586,7 @@ End SQL_MODE_ORACLE_SPECIFIC */
 %token  <kwd> OPTIMIZE
 %token  <kwd> OPTIONALLY
 %token  <kwd> ORDER_SYM                     /* SQL-2003-R */
+%token  <kwd> ORDINALITY_SYM                /* SQL-2003-N */
 %token  <kwd> OR_SYM                        /* SQL-2003-R */
 %token  <kwd> OTHERS_ORACLE_SYM             /* SQL-2011-N, PLSQL-R */
 %token  <kwd> OUTER
@@ -590,6 +597,7 @@ End SQL_MODE_ORACLE_SPECIFIC */
 %token  <kwd> PAGE_CHECKSUM_SYM
 %token  <kwd> PARSE_VCOL_EXPR_SYM
 %token  <kwd> PARTITION_SYM                 /* SQL-2003-R */
+%token  <kwd> PATH_SYM                      /* SQL-2003-N */
 %token  <kwd> PERCENTILE_CONT_SYM
 %token  <kwd> PERCENTILE_DISC_SYM
 %token  <kwd> PERCENT_RANK_SYM
@@ -1352,6 +1360,8 @@ End SQL_MODE_ORACLE_SPECIFIC */
 
 %type <sp_handler> sp_handler
 
+%type <json_on_response> json_on_response
+
 %type <Lex_field_type> type_with_opt_collate field_type
         qualified_field_type
         field_type_numeric
@@ -1359,6 +1369,7 @@ End SQL_MODE_ORACLE_SPECIFIC */
         field_type_lob
         field_type_temporal
         field_type_misc
+        json_table_field_type
 
 %type <Lex_dyncol_type> opt_dyncol_type dyncol_type
         numeric_dyncol_type temporal_dyncol_type string_dyncol_type
@@ -1522,7 +1533,7 @@ End SQL_MODE_ORACLE_SPECIFIC */
         table_primary_derived table_primary_derived_opt_parens
         derived_table_list table_reference_list_parens
         nested_table_reference_list join_table_parens
-        update_table_list
+        update_table_list table_function
 %type <date_time_type> date_time_type;
 %type <interval> interval
 
@@ -1677,6 +1688,9 @@ End SQL_MODE_ORACLE_SPECIFIC */
         opt_delete_gtid_domain
         asrow_attribute
         opt_constraint_no_id
+        json_table_columns_clause json_table_columns_list json_table_column
+        json_table_column_type json_opt_on_empty_or_error
+        json_on_error_response json_on_empty_response
 
 %type <NONE> call sp_proc_stmts sp_proc_stmts1 sp_proc_stmt
 %type <NONE> sp_if_then_statements sp_case_then_statements
@@ -11424,6 +11438,166 @@ join_table_list:
           derived_table_list { MYSQL_YYABORT_UNLESS($$=$1); }
         ;
 
+json_table_columns_clause:
+          COLUMNS '(' json_table_columns_list ')'
+          {}
+        ;
+
+json_table_columns_list:
+          json_table_column
+        | json_table_columns_list ',' json_table_column
+          {}
+        ;
+
+json_table_column:
+          ident
+          {
+            LEX *lex=Lex;
+            Create_field *f= new (thd->mem_root) Create_field();
+
+            if (unlikely(check_string_char_length(&$1, 0, NAME_CHAR_LEN,
+                                                  system_charset_info, 1)))
+              my_yyabort_error((ER_TOO_LONG_IDENT, MYF(0), $1.str));
+
+            lex->json_table->m_cur_json_table_column=
+              new (thd->mem_root) Json_table_column(f,
+                                    lex->json_table->m_sql_nest);
+
+            if (unlikely(!f ||
+                !lex->json_table->m_cur_json_table_column))
+              MYSQL_YYABORT;
+
+            lex->init_last_field(f, &$1, NULL);
+          }
+          json_table_column_type
+          {
+            LEX *lex=Lex;
+            if (unlikely(lex->json_table->
+                           m_cur_json_table_column->m_field->check(thd)))
+              MYSQL_YYABORT;
+            lex->json_table->m_columns.push_back(
+               lex->json_table->m_cur_json_table_column, thd->mem_root);
+          }
+        | NESTED_SYM PATH_SYM TEXT_STRING_sys
+          {
+            LEX *lex=Lex;
+            Json_table_nested_path *np= new (thd->mem_root)
+              Json_table_nested_path(lex->json_table->m_sql_nest);
+            np->set_path(thd, $3);
+            lex->json_table->add_nested(np);
+          }
+          json_table_columns_clause
+          {
+            LEX *lex=Lex;
+            lex->json_table->leave_nested();
+          }
+        ;
+
+json_table_column_type:
+          FOR_SYM ORDINALITY_SYM
+          {
+            Lex_field_type_st type;
+            type.set_handler_length_flags(&type_handler_slong, 0, 0);
+            Lex->last_field->set_attributes(thd, type, Lex->charset,
+                                            COLUMN_DEFINITION_TABLE_FIELD);
+            Lex->json_table->m_cur_json_table_column->
+              set(Json_table_column::FOR_ORDINALITY);
+          }
+        | json_table_field_type PATH_SYM TEXT_STRING_sys
+            json_opt_on_empty_or_error
+          {
+            Lex->last_field->set_attributes(thd, $1, Lex->charset,
+                                            COLUMN_DEFINITION_TABLE_FIELD);
+            if (Lex->json_table->m_cur_json_table_column->
+                  set(thd, Json_table_column::PATH, $3))
+            {
+              MYSQL_YYABORT;
+            }
+          }
+        | json_table_field_type EXISTS PATH_SYM TEXT_STRING_sys 
+          {
+            Lex->last_field->set_attributes(thd, $1, Lex->charset,
+                                            COLUMN_DEFINITION_TABLE_FIELD);
+            Lex->json_table->m_cur_json_table_column->
+              set(thd, Json_table_column::EXISTS_PATH, $4);
+          }
+        ;
+
+json_table_field_type:
+          field_type_numeric
+        | field_type_temporal
+        | field_type_string
+        | field_type_lob
+        ;
+
+json_opt_on_empty_or_error:
+          /* none */
+          {}
+        | json_on_error_response
+        | json_on_error_response json_on_empty_response
+        | json_on_empty_response
+        | json_on_empty_response json_on_error_response
+        ;
+
+json_on_response:
+          ERROR_SYM
+          {
+            $$.m_response= Json_table_column::RESPONSE_ERROR;
+          }
+        | NULL_SYM
+          {
+            $$.m_response= Json_table_column::RESPONSE_NULL;
+          }
+        | DEFAULT TEXT_STRING_sys
+          {
+            $$.m_response= Json_table_column::RESPONSE_DEFAULT;
+            $$.m_default= $2;
+            Lex->json_table->m_cur_json_table_column->m_defaults_cs=
+                                    thd->variables.collation_connection;
+          }
+        ;
+
+json_on_error_response:
+          json_on_response ON ERROR_SYM
+          {
+            Lex->json_table->m_cur_json_table_column->m_on_error= $1;
+          }
+        ;
+
+json_on_empty_response:
+          json_on_response ON EMPTY_SYM
+          {
+            Lex->json_table->m_cur_json_table_column->m_on_empty= $1;
+          }
+        ;
+
+table_function:
+          JSON_TABLE_SYM '(' expr ',' TEXT_STRING_sys
+          {
+            Table_function_json_table *jt=
+              new (thd->mem_root) Table_function_json_table($3);
+            if (unlikely(!jt || jt->m_nested_path.set_path(thd, $5)))
+              MYSQL_YYABORT;
+            Lex->json_table= jt;
+            jt->m_sql_nest= &jt->m_nested_path;
+          }
+          json_table_columns_clause ')' opt_as ident_table_alias
+          {
+            SELECT_LEX *sel= Select;
+            sel->table_join_options= 0;
+            if (!($$= Select->add_table_to_list(thd,
+                           new (thd->mem_root) Table_ident(thd, &empty_clex_str,
+                                                           &$10, TRUE),
+                           NULL,
+                           Select->get_table_join_options() |
+                             TL_OPTION_TABLE_FUNCTION,
+                           YYPS->m_lock_type,
+                           YYPS->m_mdl_type,
+                           0,0,0, Lex->json_table)))
+              MYSQL_YYABORT;
+          }
+        ;
+
 /*
   The ODBC escape syntax for Outer Join is: '{' OJ join_table '}'
   The parser does not define OJ as a token, any ident is accepted
@@ -11631,6 +11805,7 @@ table_factor:
             $$= $1;
           }
         | table_reference_list_parens { $$= $1; }
+        | table_function { $$= $1; }
         ;
 
 table_primary_ident_opt_parens:
@@ -15669,6 +15844,7 @@ keyword_sp_var_and_label:
         | MYSQL_SYM
         | MYSQL_ERRNO_SYM
         | NAME_SYM
+        | NESTED_SYM
         | NEVER_SYM
         | NEXT_SYM           %prec PREC_BELOW_CONTRACTION_TOKEN2
         | NEXTVAL_SYM
@@ -15688,6 +15864,7 @@ keyword_sp_var_and_label:
         | ONE_SYM
         | ONLINE_SYM
         | ONLY_SYM
+        | ORDINALITY_SYM
         | OVERLAPS_SYM
         | PACKAGE_MARIADB_SYM
         | PACK_KEYS_SYM
@@ -15883,6 +16060,7 @@ reserved_keyword_udt_not_param_type:
         | ELSE
         | ELSEIF_MARIADB_SYM
         | ELSIF_ORACLE_SYM
+        | EMPTY_SYM
         | ENCLOSED
         | ESCAPED
         | EXCEPT_SYM
@@ -15964,6 +16142,7 @@ reserved_keyword_udt_not_param_type:
         | PAGE_CHECKSUM_SYM
         | PARSE_VCOL_EXPR_SYM
         | PARTITION_SYM
+        | PATH_SYM
         | PERCENT_RANK_SYM
         | PERCENTILE_CONT_SYM
         | PERCENTILE_DISC_SYM
