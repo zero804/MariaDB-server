@@ -7211,9 +7211,10 @@ bool Type_handler_decimal_result::
        Item_save_in_value(THD *thd, Item *item, st_value *value) const
 {
   value->m_type= DYN_COL_DECIMAL;
-  my_decimal *dec= item->val_decimal(&value->m_decimal);
-  if (dec != &value->m_decimal && !item->null_value)
-    my_decimal2decimal(dec, &value->m_decimal);
+  value->value.m_decimal.init();
+  my_decimal *dec= item->val_decimal((my_decimal*)&value->value.m_decimal);
+  if (dec != &value->value.m_decimal && !item->null_value)
+    my_decimal2decimal(dec, &value->value.m_decimal);
   return check_null(item, value);
 }
 
@@ -7292,7 +7293,7 @@ bool Type_handler_decimal_result::
                             const st_value *val) const
 {
   param->unsigned_flag= attr->unsigned_flag;
-  param->set_decimal(&val->m_decimal, attr->unsigned_flag);
+  param->set_decimal(&val->value.m_decimal, attr->unsigned_flag);
   return false;
 }
 

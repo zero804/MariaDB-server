@@ -85,16 +85,9 @@ inline int check_result(uint mask, int result)
 }
 
 
-/**
-  my_decimal class limits 'decimal_t' type to what we need in MySQL.
-
-  It contains internally all necessary space needed by the instance so
-  no extra memory is needed. One should call fix_buffer_pointer() function
-  when he moves my_decimal objects in memory.
-*/
-
-class my_decimal :public decimal_t
+class my_decimal_pod :public decimal_t
 {
+protected:
   /*
     Several of the routines in strings/decimal.c have had buffer
     overrun/underrun problems. These are *not* caught by valgrind.
@@ -114,14 +107,7 @@ class my_decimal :public decimal_t
 
 public:
 
-  my_decimal(const my_decimal &rhs) : decimal_t(rhs)
-  {
-    init();
-    for (uint i= 0; i < DECIMAL_BUFF_LENGTH; i++)
-      buffer[i]= rhs.buffer[i];
-  }
-
-  my_decimal& operator=(const my_decimal &rhs)
+  my_decimal_pod& operator=(const my_decimal_pod &rhs)
   {
     if (this == &rhs)
       return *this;
@@ -143,21 +129,6 @@ public:
     TRASH_ALLOC(buffer, sizeof(buffer));
   }
 
-  my_decimal()
-  {
-    init();
-  }
-  my_decimal(const uchar *bin, int prec, int scale)
-  {
-    init();
-    check_result(E_DEC_FATAL_ERROR, bin2decimal(bin, this, prec, scale));
-  }
-  my_decimal(Field *field);
-  ~my_decimal()
-  {
-    sanity_check();
-  }
-
   void sanity_check()
   {
     DBUG_SLOW_ASSERT(foo1 == test_value);
@@ -172,13 +143,13 @@ public:
   void set_zero()
   {
     /*
-      We need the up-cast here, since my_decimal has sign() member functions,
+      We need the up-cast here, since my_decimal_pod has sign() member functions,
       which conflicts with decimal_t::sign
       (and decimal_make_zero is a macro, rather than a funcion).
     */
     decimal_make_zero(static_cast<decimal_t*>(this));
   }
-  int cmp(const my_decimal *other) const
+  int cmp(const my_decimal_pod *other) const
   {
     return decimal_cmp(this, other);
   }
@@ -217,12 +188,12 @@ public:
   {
     return to_string(to, 0, 0, 0);
   }
-  String *to_string_round(String *to, uint scale, my_decimal *round_buff) const
+  String *to_string_round(String *to, uint scale, my_decimal_pod *round_buff) const
   {
     (void) round_to(round_buff, scale, HALF_UP); // QQ: check result?
     return round_buff->to_string(to);
   }
-  int round_to(my_decimal *to, uint scale, decimal_round_mode mode,
+  int round_to(my_decimal_pod *to, uint scale, decimal_round_mode mode,
                int mask= E_DEC_FATAL_ERROR) const
   {
     return check_result(mask, decimal_round(this, to, (int) scale, mode));
@@ -230,10 +201,49 @@ public:
   int to_binary(uchar *bin, int prec, int scale,
                 uint mask= E_DEC_FATAL_ERROR) const;
 #endif
-  /** Swap two my_decimal values */
-  void swap(my_decimal &rhs)
+  /** Swap two my_decimal_pod values */
+  void swap(my_decimal_pod &rhs)
   {
-    swap_variables(my_decimal, *this, rhs);
+    swap_variables(my_decimal_pod, *this, rhs);
+  }
+};
+
+/**
+  my_decimal class limits 'decimal_t' type to what we need in MySQL.
+
+  It contains internally all necessary space needed by the instance so
+  no extra memory is needed. One should call fix_buffer_pointer() function
+  when he moves my_decimal objects in memory.
+*/
+
+class my_decimal :public my_decimal_pod
+{
+public:
+
+  my_decimal(const my_decimal &rhs)
+  {
+    init();
+    *this= rhs;
+  }
+  my_decimal& operator=(const my_decimal&rhs)
+  {
+    my_decimal_pod::operator=(rhs);
+    return *this;
+  }
+
+  my_decimal()
+  {
+    init();
+  }
+  my_decimal(const uchar *bin, int prec, int scale)
+  {
+    init();
+    check_result(E_DEC_FATAL_ERROR, bin2decimal(bin, this, prec, scale));
+  }
+  my_decimal(Field *field);
+  ~my_decimal()
+  {
+    sanity_check();
   }
 };
 
@@ -313,7 +323,7 @@ inline uint32 my_decimal_precision_to_length(uint precision, uint8 scale,
 }
 
 inline
-int my_decimal_string_length(const my_decimal *d)
+int my_decimal_string_length(const my_decimal_pod *d)
 {
   /* length of string representation including terminating '\0' */
   return decimal_string_size(d);
@@ -336,7 +346,7 @@ int my_decimal_get_binary_size(uint precision, uint scale)
 
 
 inline
-void my_decimal2decimal(const my_decimal *from, my_decimal *to)
+void my_decimal2decimal(const my_decimal_pod *from, my_decimal_pod *to)
 {
   *to= *from;
 }
@@ -518,7 +528,7 @@ int my_decimal_mod(uint mask, my_decimal *res, const my_decimal *a,
     -1 if a<b, 1 if a>b and 0 if a==b
 */
 inline
-int my_decimal_cmp(const my_decimal *a, const my_decimal *b)
+int my_decimal_cmp(const my_decimal_pod *a, const my_decimal_pod *b)
 {
   return decimal_cmp(a, b);
 }

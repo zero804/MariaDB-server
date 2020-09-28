@@ -50,9 +50,9 @@ struct st_value
     longlong m_longlong;
     double m_double;
     MYSQL_TIME m_time;
+    my_decimal_pod m_decimal;
   } value;
   String m_string;
-  my_decimal m_decimal;
 };
 
 C_MODE_END
@@ -4016,7 +4016,7 @@ public:
   void set_int(longlong i, uint32 max_length_arg);
   void set_double(double i);
   void set_decimal(const char *str, ulong length);
-  void set_decimal(const my_decimal *dv, bool unsigned_arg);
+  void set_decimal(const my_decimal_pod *dv, bool unsigned_arg);
   bool set_str(const char *str, ulong length,
                CHARSET_INFO *fromcs, CHARSET_INFO *tocs);
   bool set_longdata(const char *str, ulong length);

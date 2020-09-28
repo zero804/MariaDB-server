@@ -96,8 +96,8 @@ int decimal_operation_results(int result, const char *value, const char *type)
     @retval E_DEC_OOM
 */
 
-int my_decimal::to_string_native(String *str, uint fixed_prec, uint fixed_dec,
-                                 char filler, uint mask) const
+int my_decimal_pod::to_string_native(String *str, uint fixed_prec,
+                                 uint fixed_dec, char filler, uint mask) const
 {
   /*
     Calculate the size of the string: For DECIMAL(a,b), fixed_prec==a
@@ -198,7 +198,7 @@ str_set_decimal(uint mask, const my_decimal *val,
     E_DEC_OVERFLOW
 */
 
-int my_decimal::to_binary(uchar *bin, int prec, int scale, uint mask) const
+int my_decimal_pod::to_binary(uchar *bin, int prec, int scale, uint mask) const
 {
   int err1= E_DEC_OK, err2;
   my_decimal rounded;
@@ -368,7 +368,7 @@ int my_decimal2int(uint mask, const decimal_t *d, bool unsigned_flag,
 }
 
 
-longlong my_decimal::to_longlong(bool unsigned_flag) const
+longlong my_decimal_pod::to_longlong(bool unsigned_flag) const
 {
   longlong result;
   my_decimal2int(E_DEC_FATAL_ERROR, this, unsigned_flag, &result);

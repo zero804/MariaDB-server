@@ -4085,7 +4085,7 @@ void Item_param::set_decimal(const char *str, ulong length)
   DBUG_VOID_RETURN;
 }
 
-void Item_param::set_decimal(const my_decimal *dv, bool unsigned_arg)
+void Item_param::set_decimal(const my_decimal_pod *dv, bool unsigned_arg)
 {
   DBUG_ASSERT(value.type_handler()->cmp_type() == DECIMAL_RESULT);
   state= SHORT_DATA_VALUE;
