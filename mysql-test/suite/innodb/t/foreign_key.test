@@ -299,6 +299,35 @@ ALTER TABLE t1 ADD FOREIGN KEY f (a) REFERENCES t1 (pk), LOCK=EXCLUSIVE;# Cleanu
 XA END 'xid';
 XA ROLLBACK 'xid';
 DROP TABLE t1;
+
+CREATE TABLE t1 (pk INT PRIMARY KEY,
+                 f1 VARCHAR(10), f2 VARCHAR(10),
+		 f3 VARCHAR(10), f4 VARCHAR(10),
+		 f5 VARCHAR(10), f6 VARCHAR(10),
+		 f7 VARCHAR(10), f8 VARCHAR(10),
+		 INDEX(f1), INDEX(f2), INDEX(f3), INDEX(f4),
+		 INDEX(f5), INDEX(f6), INDEX(f7), INDEX(f8)) ENGINE=InnoDB;
+INSERT INTO t1 VALUES (1, 'innodb', 'innodb', 'innodb', 'innodb',
+		       'mariadb', 'innodb', 'mariadb', 'innodb'),
+		      (2, 'mariadb', 'mariadb', 'mariadb', 'mariadb',
+		       'mariadb', 'mariadb', 'innodb', 'mariadb');
+ALTER TABLE t1 ADD FOREIGN KEY (f1) REFERENCES t1 (f2) ON UPDATE CASCADE;
+ALTER TABLE t1 ADD FOREIGN KEY (f3) REFERENCES t1 (f4) ON DELETE SET NULL;
+ALTER TABLE t1 ADD FOREIGN KEY (f5) REFERENCES t1 (f6) ON UPDATE SET NULL;
+ALTER TABLE t1 ADD FOREIGN KEY (f7) REFERENCES t1 (f8) ON DELETE CASCADE;
+SHOW CREATE TABLE t1;
+--error ER_ROW_IS_REFERENCED_2
+UPDATE t1 SET f2='cascade';
+
+--error ER_ROW_IS_REFERENCED_2
+UPDATE t1 SET f6='null_pointer';
+
+--error ER_ROW_IS_REFERENCED_2
+DELETE FROM t1 WHERE f4='mariadb';
+
+--error ER_ROW_IS_REFERENCED_2
+DELETE FROM t1 WHERE f8='mariadb';
+DROP TABLE t1;
 #
 # End of 10.1 tests
 #
