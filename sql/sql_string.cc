@@ -155,7 +155,7 @@ static inline void APPEND_HEX(char *&to, uchar value)
 }
 
 
-void Static_binary_string::qs_append_hex(const char *str, uint32 len)
+void Binary_string::qs_append_hex(const char *str, uint32 len)
 {
   const char *str_end= str + len;
   for (char *to= Ptr + str_length ; str < str_end; str++)
@@ -653,7 +653,7 @@ bool String::append_with_prefill(const char *s,uint32 arg_length,
 }
 
 
-int Static_binary_string::strstr(const Static_binary_string &s, uint32 offset)
+int Binary_string::strstr(const Binary_string &s, uint32 offset)
 {
   if (s.length()+offset <= str_length)
   {
@@ -684,7 +684,7 @@ skip:
 ** Search string from end. Offset is offset to the end of string
 */
 
-int Static_binary_string::strrstr(const Static_binary_string &s, uint32 offset)
+int Binary_string::strrstr(const Binary_string &s, uint32 offset)
 {
   if (s.length() <= offset && offset <= str_length)
   {
@@ -754,34 +754,34 @@ int Binary_string::reserve(size_t space_needed, size_t grow_by)
   return FALSE;
 }
 
-void Static_binary_string::qs_append(const char *str, size_t len)
+void Binary_string::qs_append(const char *str, size_t len)
 {
   memcpy(Ptr + str_length, str, len + 1);
   str_length += (uint32)len;
 }
 
-void Static_binary_string::qs_append(double d)
+void Binary_string::qs_append(double d)
 {
   char *buff = Ptr + str_length;
   str_length+= (uint32) my_gcvt(d, MY_GCVT_ARG_DOUBLE, FLOATING_POINT_BUFFER - 1, buff,
                        NULL);
 }
 
-void Static_binary_string::qs_append(const double *d)
+void Binary_string::qs_append(const double *d)
 {
   double ld;
   float8get(ld, (char*) d);
   qs_append(ld);
 }
 
-void Static_binary_string::qs_append(int i)
+void Binary_string::qs_append(int i)
 {
   char *buff= Ptr + str_length;
   char *end= int10_to_str(i, buff, -10);
   str_length+= (int) (end-buff);
 }
 
-void Static_binary_string::qs_append(ulonglong i)
+void Binary_string::qs_append(ulonglong i)
 {
   char *buff= Ptr + str_length;
   char *end= longlong10_to_str(i, buff, 10);
@@ -830,11 +830,9 @@ bool Binary_string::copy_printable_hhhh(CHARSET_INFO *to_cs,
 */
 
 
-int sortcmp(const Static_binary_string *s, const Static_binary_string *t,
-            CHARSET_INFO *cs)
+int sortcmp(const Binary_string *s, const Binary_string *t, CHARSET_INFO *cs)
 {
- return cs->strnncollsp(s->ptr(), s->length(),
-                        t->ptr(), t->length());
+ return cs->strnncollsp(s->ptr(), s->length(), t->ptr(), t->length());
 }
 
 
