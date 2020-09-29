@@ -1,0 +1,5 @@
+call mtr.add_suppression("Replication event checksum verification failed");
+call mtr.add_suppression("Error in Log_event::read_log_event");
+set @@global.debug_dbug = VALUE;
+set @@global.master_verify_checksum = DO_CHECKSUM;
+# EOF the test
