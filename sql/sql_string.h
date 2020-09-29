@@ -29,7 +29,7 @@
 #include "m_string.h"                           /* TRASH */
 #include "sql_list.h"
 
-class Binary_string;
+class Binary_string_pod;
 class String;
 #ifdef MYSQL_SERVER
 extern PSI_memory_key key_memory_String_value;
@@ -42,7 +42,7 @@ typedef struct st_io_cache IO_CACHE;
 typedef struct st_mem_root MEM_ROOT;
 
 #include "pack.h"
-int sortcmp(const Binary_string *s, const Binary_string *t,
+int sortcmp(const Binary_string_pod *s, const Binary_string_pod *t,
             CHARSET_INFO *cs);
 String *copy_if_not_alloced(String *a,String *b,uint32 arg_length);
 inline uint32 copy_and_convert(char *to, size_t to_length,
@@ -202,7 +202,7 @@ public:
   A storage for String.
   Should be eventually derived from LEX_STRING.
 */
-class Binary_string: public Sql_alloc
+class Binary_string_pod
 {
 protected:
   char *Ptr;
@@ -217,44 +217,6 @@ protected:
   }
 
 public:
-
-  Binary_string()
-  {
-    init_private_data(NULL, 0);
-  }
-  explicit Binary_string(size_t length_arg)
-  {
-    init_private_data(NULL, 0);
-    (void) real_alloc(length_arg);
-  }
-  explicit Binary_string(const char *str)
-  {
-    init_private_data(str, strlen(str));
-  }
-  /*
-    NOTE: If one intend to use the c_ptr() method, the following two
-    contructors need the size of memory for STR to be at least LEN+1 (to make
-    room for zero termination).
-  */
-  Binary_string(const char *str, size_t length_arg)
-  {
-    init_private_data(str, length_arg);
-  }
-  Binary_string(char *str, size_t length_arg)
-  {
-    init_private_data(str, length_arg);
-    Alloced_length= str_length;
-  }
-  explicit Binary_string(const Binary_string &str)
-   :Ptr(str.Ptr), str_length(str.str_length)
-  {
-    Alloced_length= str.Alloced_length;
-    extra_alloc= 0;
-    alloced= thread_specific= 0;
-  }
-
-  ~Binary_string() { free(); }
-
   /* Mark variable thread specific it it's not allocated already */
   inline void set_thread_specific()
   {
@@ -267,7 +229,7 @@ public:
   inline void extra_allocation(size_t len) { extra_alloc= (uint32)len; }
   inline void mark_as_const() { Alloced_length= 0;}
 
-  inline bool uses_buffer_owned_by(const Binary_string *s) const
+  inline bool uses_buffer_owned_by(const Binary_string_pod *s) const
   {
     return (s->alloced && Ptr >= s->Ptr && Ptr < s->Ptr + s->str_length);
   }
@@ -288,7 +250,7 @@ public:
     return false;
   }
 
-  bool bin_eq(const Binary_string *other) const
+  bool bin_eq(const Binary_string_pod *other) const
   {
     return length() == other->length() &&
            !memcmp(ptr(), other->ptr(), length());
@@ -323,9 +285,9 @@ public:
   }
 
   // Returns offset to substring or -1
-  int strstr(const Binary_string &search, uint32 offset=0);
+  int strstr(const Binary_string_pod &search, uint32 offset=0);
   // Returns offset to substring or -1
-  int strrstr(const Binary_string &search, uint32 offset=0);
+  int strrstr(const Binary_string_pod &search, uint32 offset=0);
 
   /*
     The following append operations do NOT check alloced memory
@@ -412,7 +374,7 @@ public:
     str_length+= uint32(end-buff);
   }
   /* Swap two string objects. Efficient way to exchange data without memcpy. */
-  void swap(Binary_string &s)
+  void swap(Binary_string_pod &s)
   {
     swap_variables(char *, Ptr, s.Ptr);
     swap_variables(uint32, str_length, s.str_length);
@@ -446,7 +408,7 @@ public:
     str_length= static_cast<uint32>(length_arg);
   }
 
-  void set(Binary_string &str, size_t offset, size_t length_arg)
+  void set(Binary_string_pod &str, size_t offset, size_t length_arg)
   {
     DBUG_ASSERT(&str != this);
     free();
@@ -486,7 +448,7 @@ public:
     }
   }
 
-  inline Binary_string& operator=(const Binary_string &s)
+  inline Binary_string_pod& operator=(const Binary_string_pod &s)
   {
     if (&s != this)
     {
@@ -505,7 +467,7 @@ public:
   bool set_fcvt(double num, uint decimals);
 
   bool copy();                                  // Alloc string if not alloced
-  bool copy(const Binary_string &s);            // Allocate new string
+  bool copy(const Binary_string_pod &s);            // Allocate new string
   bool copy(const char *s, size_t length_arg);	// Allocate new string
   bool copy_or_move(const char *s,size_t length_arg);
 
@@ -534,7 +496,7 @@ public:
   {
     return append(s.str, s.length);
   }
-  bool append(const Binary_string &s)
+  bool append(const Binary_string_pod &s)
   {
     return append(s.ptr(), s.length());
   }
@@ -641,7 +603,7 @@ public:
   // Shrink the buffer, but only if it is allocated on the heap.
   void shrink(size_t length_arg);
 
-  void move(Binary_string &s)
+  void move(Binary_string_pod &s)
   {
     set_alloced(s.Ptr, s.str_length, s.Alloced_length);
     extra_alloc= s.extra_alloc;
@@ -655,7 +617,7 @@ public:
     If wrong parameter or not enough memory, do nothing
   */
   bool replace(uint32 offset,uint32 length_arg, const char *to, uint32 length);
-  bool replace(uint32 offset,uint32 length_arg, const Binary_string &to)
+  bool replace(uint32 offset,uint32 length_arg, const Binary_string_pod &to)
   {
     return replace(offset,length_arg,to.ptr(),to.length());
   }
@@ -694,6 +656,47 @@ public:
     q_net_store_length(length);
     q_append((const char *)from, (uint32) length);
   }
+};
+
+
+class Binary_string: public Sql_alloc, public Binary_string_pod
+{
+public:
+
+  Binary_string()
+  {
+    init_private_data(NULL, 0);
+  }
+  explicit Binary_string(size_t length_arg)
+  {
+    init_private_data(NULL, 0);
+    (void) real_alloc(length_arg);
+  }
+  explicit Binary_string(const char *str)
+  {
+    init_private_data(str, strlen(str));
+  }
+  /*
+    NOTE: If one intend to use the c_ptr() method, the following two
+    contructors need the size of memory for STR to be at least LEN+1 (to make
+    room for zero termination).
+  */
+  Binary_string(const char *str, size_t length_arg)
+  {
+    init_private_data(str, length_arg);
+  }
+  Binary_string(char *str, size_t length_arg)
+  {
+    init_private_data(str, length_arg);
+    Alloced_length= str_length;
+  }
+  explicit Binary_string(const Binary_string &str)
+  {
+    init_private_data(str.Ptr, str.str_length);
+    Alloced_length= str.Alloced_length;
+  }
+
+  ~Binary_string() { free(); }
 };
 
 
@@ -780,7 +783,7 @@ public:
     if (&s != this)
     {
       set_charset(s);
-      Binary_string::operator=(s);
+      Binary_string_pod::operator=(s);
     }
     return *this;
   }
@@ -909,8 +912,8 @@ public:
   }
 
   void strip_sp();
-  friend int sortcmp(const Binary_string *, const Binary_string *, CHARSET_INFO *);
-  friend int stringcmp(const Binary_string *, const Binary_string *);
+  friend int sortcmp(const Binary_string_pod *, const Binary_string_pod *, CHARSET_INFO *);
+  friend int stringcmp(const Binary_string_pod *, const Binary_string_pod *);
   friend String *copy_if_not_alloced(String *a, String *b, uint32 arg_length);
   friend class Field;
   uint32 numchars() const

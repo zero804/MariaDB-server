@@ -31,7 +31,7 @@
 ** String functions
 *****************************************************************************/
 
-bool Binary_string::real_alloc(size_t length)
+bool Binary_string_pod::real_alloc(size_t length)
 {
   size_t arg_length= ALIGN_SIZE(length + 1);
   DBUG_ASSERT(arg_length > length);
@@ -81,7 +81,7 @@ bool Binary_string::real_alloc(size_t length)
 
    @retval true An error occurred when attempting to allocate memory.
 */
-bool Binary_string::realloc_raw(size_t alloc_length)
+bool Binary_string_pod::realloc_raw(size_t alloc_length)
 {
   if (Alloced_length <= alloc_length)
   {
@@ -132,7 +132,7 @@ bool String::set_int(longlong num, bool unsigned_flag, CHARSET_INFO *cs)
 
 
 // Convert a number into its HEX representation
-bool Binary_string::set_hex(ulonglong num)
+bool Binary_string_pod::set_hex(ulonglong num)
 {
   char *n_end;
   if (alloc(65) || !(n_end= longlong2str(num, Ptr, 16)))
@@ -155,7 +155,7 @@ static inline void APPEND_HEX(char *&to, uchar value)
 }
 
 
-void Binary_string::qs_append_hex(const char *str, uint32 len)
+void Binary_string_pod::qs_append_hex(const char *str, uint32 len)
 {
   const char *str_end= str + len;
   for (char *to= Ptr + str_length ; str < str_end; str++)
@@ -165,7 +165,7 @@ void Binary_string::qs_append_hex(const char *str, uint32 len)
 
 
 // Convert a string to its HEX representation
-bool Binary_string::set_hex(const char *str, uint32 len)
+bool Binary_string_pod::set_hex(const char *str, uint32 len)
 {
   /*
     Safety: cut the source string if "len" is too large.
@@ -183,7 +183,7 @@ bool Binary_string::set_hex(const char *str, uint32 len)
 }
 
 
-bool Binary_string::set_fcvt(double num, uint decimals)
+bool Binary_string_pod::set_fcvt(double num, uint decimals)
 {
   // Assert that `decimals` is small enough to fit into FLOATING_POINT_BUFFER
   DBUG_ASSERT(decimals < DECIMAL_NOT_SPECIFIED);
@@ -212,7 +212,7 @@ bool String::set_real(double num,uint decimals, CHARSET_INFO *cs)
 }
 
 
-bool Binary_string::copy()
+bool Binary_string_pod::copy()
 {
   if (!alloced)
   {
@@ -233,7 +233,7 @@ bool Binary_string::copy()
    @retval false Success.
    @retval true Memory allocation failed.
 */
-bool Binary_string::copy(const Binary_string &str)
+bool Binary_string_pod::copy(const Binary_string_pod &str)
 {
   if (alloc(str.str_length))
     return TRUE;
@@ -243,7 +243,7 @@ bool Binary_string::copy(const Binary_string &str)
   return FALSE;
 }
 
-bool Binary_string::copy(const char *str, size_t arg_length)
+bool Binary_string_pod::copy(const char *str, size_t arg_length)
 {
   DBUG_ASSERT(arg_length < UINT_MAX32);
   if (alloc(arg_length))
@@ -269,7 +269,7 @@ bool Binary_string::copy(const char *str, size_t arg_length)
   from valgrind
 */
 
-bool Binary_string::copy_or_move(const char *str, size_t arg_length)
+bool Binary_string_pod::copy_or_move(const char *str, size_t arg_length)
 {
   DBUG_ASSERT(arg_length < UINT_MAX32);
   if (alloc(arg_length))
@@ -494,7 +494,7 @@ bool String::set_ascii(const char *str, size_t arg_length)
 
 /* This is used by mysql.cc */
 
-bool Binary_string::fill(uint32 max_length,char fill_char)
+bool Binary_string_pod::fill(uint32 max_length,char fill_char)
 {
   if (str_length > max_length)
     Ptr[str_length=max_length]=0;
@@ -544,11 +544,11 @@ bool String::append(const char *s,size_t size)
   /*
     For an ASCII compatinble string we can just append.
   */
-  return Binary_string::append(s, arg_length);
+  return Binary_string_pod::append(s, arg_length);
 }
 
 
-bool Binary_string::append_longlong(longlong val)
+bool Binary_string_pod::append_longlong(longlong val)
 {
   if (realloc(str_length+MAX_BIGINT_WIDTH+2))
     return TRUE;
@@ -558,7 +558,7 @@ bool Binary_string::append_longlong(longlong val)
 }
 
 
-bool Binary_string::append_ulonglong(ulonglong val)
+bool Binary_string_pod::append_ulonglong(ulonglong val)
 {
   if (realloc(str_length+MAX_BIGINT_WIDTH+2))
     return TRUE;
@@ -600,11 +600,11 @@ bool String::append(const char *s, size_t arg_length, CHARSET_INFO *cs)
                                   s, (uint32)arg_length, cs, &dummy_errors);
     return false;
   }
-  return Binary_string::append(s, arg_length);
+  return Binary_string_pod::append(s, arg_length);
 }
 
 
-bool Binary_string::append(IO_CACHE* file, uint32 arg_length)
+bool Binary_string_pod::append(IO_CACHE* file, uint32 arg_length)
 {
   if (realloc_with_extra_if_needed(str_length+arg_length))
     return TRUE;
@@ -653,7 +653,7 @@ bool String::append_with_prefill(const char *s,uint32 arg_length,
 }
 
 
-int Binary_string::strstr(const Binary_string &s, uint32 offset)
+int Binary_string_pod::strstr(const Binary_string_pod &s, uint32 offset)
 {
   if (s.length()+offset <= str_length)
   {
@@ -684,7 +684,7 @@ skip:
 ** Search string from end. Offset is offset to the end of string
 */
 
-int Binary_string::strrstr(const Binary_string &s, uint32 offset)
+int Binary_string_pod::strrstr(const Binary_string_pod &s, uint32 offset)
 {
   if (s.length() <= offset && offset <= str_length)
   {
@@ -712,7 +712,7 @@ skip:
 }
 
 
-bool Binary_string::replace(uint32 offset, uint32 arg_length,
+bool Binary_string_pod::replace(uint32 offset, uint32 arg_length,
                             const char *to, uint32 to_length)
 {
   long diff = (long) to_length-(long) arg_length;
@@ -744,7 +744,7 @@ bool Binary_string::replace(uint32 offset, uint32 arg_length,
 
 
 // added by Holyfoot for "geometry" needs
-int Binary_string::reserve(size_t space_needed, size_t grow_by)
+int Binary_string_pod::reserve(size_t space_needed, size_t grow_by)
 {
   if (Alloced_length < str_length + space_needed)
   {
@@ -754,34 +754,34 @@ int Binary_string::reserve(size_t space_needed, size_t grow_by)
   return FALSE;
 }
 
-void Binary_string::qs_append(const char *str, size_t len)
+void Binary_string_pod::qs_append(const char *str, size_t len)
 {
   memcpy(Ptr + str_length, str, len + 1);
   str_length += (uint32)len;
 }
 
-void Binary_string::qs_append(double d)
+void Binary_string_pod::qs_append(double d)
 {
   char *buff = Ptr + str_length;
   str_length+= (uint32) my_gcvt(d, MY_GCVT_ARG_DOUBLE, FLOATING_POINT_BUFFER - 1, buff,
                        NULL);
 }
 
-void Binary_string::qs_append(const double *d)
+void Binary_string_pod::qs_append(const double *d)
 {
   double ld;
   float8get(ld, (char*) d);
   qs_append(ld);
 }
 
-void Binary_string::qs_append(int i)
+void Binary_string_pod::qs_append(int i)
 {
   char *buff= Ptr + str_length;
   char *end= int10_to_str(i, buff, -10);
   str_length+= (int) (end-buff);
 }
 
-void Binary_string::qs_append(ulonglong i)
+void Binary_string_pod::qs_append(ulonglong i)
 {
   char *buff= Ptr + str_length;
   char *end= longlong10_to_str(i, buff, 10);
@@ -789,7 +789,7 @@ void Binary_string::qs_append(ulonglong i)
 }
 
 
-bool Binary_string::copy_printable_hhhh(CHARSET_INFO *to_cs,
+bool Binary_string_pod::copy_printable_hhhh(CHARSET_INFO *to_cs,
                                         CHARSET_INFO *from_cs,
                                         const char *from,
                                         size_t from_length)
@@ -830,7 +830,7 @@ bool Binary_string::copy_printable_hhhh(CHARSET_INFO *to_cs,
 */
 
 
-int sortcmp(const Binary_string *s, const Binary_string *t, CHARSET_INFO *cs)
+int sortcmp(const Binary_string_pod *s, const Binary_string_pod *t, CHARSET_INFO *cs)
 {
  return cs->strnncollsp(s->ptr(), s->length(), t->ptr(), t->length());
 }
@@ -854,7 +854,7 @@ int sortcmp(const Binary_string *s, const Binary_string *t, CHARSET_INFO *cs)
 */
 
 
-int stringcmp(const Binary_string *s, const Binary_string *t)
+int stringcmp(const Binary_string_pod *s, const Binary_string_pod *t)
 {
   uint32 s_len=s->length(),t_len=t->length(),len=MY_MIN(s_len,t_len);
   int cmp= memcmp(s->ptr(), t->ptr(), len);
@@ -1248,7 +1248,7 @@ bool String::append_semi_hex(const char *s, uint len, CHARSET_INFO *cs)
 }
 
 // Shrink the buffer, but only if it is allocated on the heap.
-void Binary_string::shrink(size_t arg_length)
+void Binary_string_pod::shrink(size_t arg_length)
 {
     if (!is_alloced())
         return;
