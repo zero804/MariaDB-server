@@ -33,15 +33,6 @@
 C_MODE_START
 #include <ma_dyncol.h>
 
-/*
-  A prototype for a C-compatible structure to store a value of any data type.
-  Currently it has to stay in /sql, as it depends on String and my_decimal.
-  We'll do the following changes:
-  1. add pure C "struct st_string" and "struct st_my_decimal"
-  2. change type of m_string to struct st_string and move inside the union
-  3. change type of m_decmal to struct st_my_decimal and move inside the union
-  4. move the definition to some file in /include
-*/
 struct st_value
 {
   enum enum_dynamic_column_type m_type;
@@ -51,8 +42,8 @@ struct st_value
     double m_double;
     MYSQL_TIME m_time;
     my_decimal_pod m_decimal;
+    Binary_string_pod m_string;
   } value;
-  String m_string;
 };
 
 C_MODE_END
@@ -79,12 +70,18 @@ class ValueBuffer: public Value
   char buffer[buffer_size];
   void reset_buffer()
   {
-    m_string.set(buffer, buffer_size, &my_charset_bin);
+    value.m_string.set_alloced(buffer, 0, buffer_size);
   }
 public:
   ValueBuffer()
   {
+    value.m_string.release(); // init Binary_string_pod
     reset_buffer();
+  }
+  ~ValueBuffer()
+  {
+    if (is_string())
+      value.m_string.free();
   }
 };
 

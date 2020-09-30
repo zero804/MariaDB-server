@@ -7223,9 +7223,11 @@ bool Type_handler_string_result::
        Item_save_in_value(THD *thd, Item *item, st_value *value) const
 {
   value->m_type= DYN_COL_STRING;
-  String *str= item->val_str(&value->m_string);
-  if (str != &value->m_string && !item->null_value)
-    value->m_string.set(str->ptr(), str->length(), str->charset());
+  String buf(value->value.m_string, &my_charset_bin);
+  if (String *str= item->val_str(&buf))
+    value->value.m_string.move(*str);
+  else
+    value->value.m_string.free();
   return check_null(item, value);
 }
 
@@ -7310,7 +7312,7 @@ bool Type_handler_string_result::
     Exact value of max_length is not known unless data is converted to
     charset of connection, so we have to set it later.
   */
-  return param->set_str(val->m_string.ptr(), val->m_string.length(),
+  return param->set_str(val->value.m_string.ptr(), val->value.m_string.length(),
                         attr->collation.collation,
                         attr->collation.collation);
 }
@@ -7338,10 +7340,11 @@ bool Type_handler_null::
 
 
 bool Type_handler::
-       Item_send_str(Item *item, Protocol *protocol, st_value *buf) const
+       Item_send_str(Item *item, Protocol *protocol, st_value *val) const
 {
+  String buf(val->value.m_string, &my_charset_bin);
   String *res;
-  if ((res= item->val_str(&buf->m_string)))
+  if ((res= item->val_str(&buf)))
   {
     DBUG_ASSERT(!item->null_value);
     return protocol->store(res->ptr(), res->length(), res->charset());

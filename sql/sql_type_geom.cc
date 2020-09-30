@@ -630,7 +630,7 @@ bool Type_handler_geometry::
 {
   param->unsigned_flag= false;
   param->setup_conversion_blob(thd);
-  return param->set_str(val->m_string.ptr(), val->m_string.length(),
+  return param->set_str(val->value.m_string.ptr(), val->value.m_string.length(),
                         &my_charset_bin, &my_charset_bin);
 }
 

@@ -690,12 +690,16 @@ public:
     init_private_data(str, length_arg);
     Alloced_length= str_length;
   }
-  explicit Binary_string(const Binary_string &str)
+  explicit Binary_string(const Binary_string_pod &str)
   {
-    init_private_data(str.Ptr, str.str_length);
-    Alloced_length= str.Alloced_length;
+    init_private_data(str.ptr(), str.length());
+    Alloced_length= str.alloced_length();
   }
-
+  explicit Binary_string(const Binary_string &str)
+  { // why is that needed and the previous constructor isn't enough?
+    init_private_data(str.ptr(), str.length());
+    Alloced_length= str.alloced_length();
+  }
   ~Binary_string() { free(); }
 };
 
@@ -722,6 +726,9 @@ public:
   { }
   String(const String &str)
    :Charset(str), Binary_string(str)
+  { }
+  String(const Binary_string_pod &str, CHARSET_INFO *cs)
+   :Charset(cs), Binary_string(str)
   { }
 
   void set(String &str,size_t offset,size_t arg_length)

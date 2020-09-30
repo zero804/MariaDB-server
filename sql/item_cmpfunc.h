@@ -1615,7 +1615,7 @@ public:
   {
     DBUG_ASSERT(!val->is_null());
     DBUG_ASSERT(val->is_string());
-    return sortcmp(value_res, &val->m_string, cmp_charset) != 0;
+    return sortcmp(value_res, &val->value.m_string, cmp_charset) != 0;
   }
   int cmp(Item *arg)
   {

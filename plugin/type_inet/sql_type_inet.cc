@@ -573,10 +573,8 @@ class cmp_item_inet6: public cmp_item_scalar
 {
   Inet6 m_native;
 public:
-  cmp_item_inet6()
-   :cmp_item_scalar(),
-    m_native(Inet6_zero())
-  { }
+  cmp_item_inet6(CHARSET_INFO *cs) :cmp_item_scalar(), m_native(Inet6_zero())
+  { cmp_charset= cs; }
   void store_value(Item *item) override
   {
     m_native= Inet6(item, &m_null_value);
@@ -585,7 +583,8 @@ public:
   {
     DBUG_ASSERT(!val->is_null());
     DBUG_ASSERT(val->is_string());
-    Inet6_null tmp(val->m_string);
+    Inet6_null tmp(val->value.m_string.ptr(), val->value.m_string.length(),
+                   cmp_charset);
     DBUG_ASSERT(!tmp.is_null());
     return m_native.cmp(tmp);
   }
@@ -603,7 +602,7 @@ public:
   }
   cmp_item *make_same() override
   {
-    return new cmp_item_inet6();
+    return new cmp_item_inet6(cmp_charset);
   }
 };
 
@@ -1348,8 +1347,9 @@ Type_handler_inet6::Item_save_in_value(THD *thd, Item *item,
                                        st_value *value) const
 {
   value->m_type= DYN_COL_STRING;
-  String *str= item->val_str(&value->m_string);
-  if (str != &value->m_string && !item->null_value)
+  String buf(value->value.m_string, &my_charset_bin);
+  String *str= item->val_str(&buf);
+  if (str)
   {
     // "item" returned a non-NULL value
     if (Inet6_null(*str).is_null())
@@ -1365,8 +1365,10 @@ Type_handler_inet6::Item_save_in_value(THD *thd, Item *item,
       return true;
     }
     // "item" returned a non-NULL value, and it was a valid INET6
-    value->m_string.set(str->ptr(), str->length(), str->charset());
+    value->value.m_string.move(*str);
   }
+  else
+    value->value.m_string.free();
   return check_null(item, value);
 }
 
@@ -1435,7 +1437,7 @@ void Type_handler_inet6::sort_length(THD *thd,
 
 cmp_item *Type_handler_inet6::make_cmp_item(THD *thd, CHARSET_INFO *cs) const
 {
-  return new (thd->mem_root) cmp_item_inet6;
+  return new (thd->mem_root) cmp_item_inet6(cs);
 }
 
 

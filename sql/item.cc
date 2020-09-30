@@ -4289,7 +4289,7 @@ bool Item_param::set_from_item(THD *thd, Item *item)
       DBUG_RETURN(set_limit_clause_param(val));
     }
   }
-  struct st_value tmp;
+  ValueBuffer<MAX_FIELD_WIDTH> tmp;
   if (!item->save_in_value(thd, &tmp))
   {
     const Type_handler *h= item->type_handler();
@@ -4832,7 +4832,7 @@ bool
 Item_param::set_value(THD *thd, sp_rcontext *ctx, Item **it)
 {
   Item *arg= *it;
-  struct st_value tmp;
+  ValueBuffer<MAX_FIELD_WIDTH> tmp;
   /*
     The OUT parameter is bound to some data type.
     It's important not to touch m_type_handler,

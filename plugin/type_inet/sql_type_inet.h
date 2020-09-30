@@ -266,7 +266,7 @@ public:
   Inet6_null(const char *str, size_t length)
    :Null_flag(binary_to_ipv6(str, length))
   { }
-  Inet6_null(const Binary_string &str)
+  Inet6_null(const Binary_string_pod &str)
    :Inet6_null(str.ptr(), str.length())
   { }
   // Initialize from an Item
@@ -565,7 +565,7 @@ public:
       Exact value of max_length is not known unless data is converted to
       charset of connection, so we have to set it later.
     */
-    return param->set_str(val->m_string.ptr(), val->m_string.length(),
+    return param->set_str(val->value.m_string.ptr(), val->value.m_string.length(),
                           attr->collation.collation,
                           attr->collation.collation);
   }
