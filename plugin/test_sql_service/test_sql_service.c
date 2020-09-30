@@ -46,10 +46,10 @@ void maria_update_hostname(const char **wild_host, long *wild_ip, long *ip_mask,
                          const char *host);
 
 /* Status variables for SHOW STATUS */
-static int test_passed= 0;
+static long test_passed= 0;
 static struct st_mysql_show_var test_sql_status[]=
 {
-  {"test_sql_service_passed", (char *)&test_passed, SHOW_BOOL},
+  {"test_sql_service_passed", (char *)&test_passed, SHOW_LONG},
   {0,0,0}
 };
 
@@ -94,7 +94,7 @@ static void run_test(MYSQL_THD thd  __attribute__((unused)),
                      void *var_ptr  __attribute__((unused)),
                      const void *save  __attribute__((unused)))
 {
-  test_passed= do_tests()==0;
+  test_passed= do_tests();
 }
 
 
