@@ -3989,19 +3989,7 @@ void Item_param::sync_clones()
 
     c->state= state;
     c->m_empty_string_is_null= m_empty_string_is_null;
-
-    c->value.PValue_simple::operator=(value);
-    c->value.Type_handler_hybrid_field_type::operator=(value);
-    type_handler()->Item_param_setup_conversion(current_thd, c);
-
-    /* Class-type members: */
-    c->value.m_decimal= value.m_decimal;
-    /*
-      Note that String's assignment op properly sets m_is_alloced to 'false',
-      which is correct here: c->str_value doesn't own anything.
-    */
-    c->value.m_string= value.m_string;
-    c->value.m_string_ptr= value.m_string_ptr;
+    c->value=value;
   }
 }
 
@@ -4173,20 +4161,6 @@ bool Item_param::set_str(const char *str, ulong length,
   uint dummy_errors;
   if (unlikely(value.m_string.copy(str, length, fromcs, tocs, &dummy_errors)))
     DBUG_RETURN(TRUE);
-  /*
-    Set str_value_ptr to make sure it's in sync with str_value.
-    This is needed in case if we're called from Item_param::set_value(),
-    from the code responsible for setting OUT parameters in
-    sp_head::execute_procedure(). This makes sure that
-    Protocol_binary::send_out_parameters() later gets a valid value
-    from Item_param::val_str().
-    Note, for IN parameters, Item_param::convert_str_value() will be called
-    later, which will convert the value from the client character set to the
-    connection character set, and will reset both str_value and str_value_ptr.
-  */
-  value.m_string_ptr.set(value.m_string.ptr(),
-                         value.m_string.length(),
-                         value.m_string.charset());
   state= SHORT_DATA_VALUE;
   collation.set(tocs, DERIVATION_COERCIBLE);
   max_length= length;
@@ -4318,7 +4292,6 @@ void Item_param::reset()
     value.m_string.free();
   else
     value.m_string.length(0);
-  value.m_string_ptr.length(0);
   /*
     We must prevent all charset conversions until data has been written
     to the binary log.
@@ -4503,7 +4476,7 @@ String *Item_param::PValue::val_str(String *str,
 {
   switch (type_handler()->cmp_type()) {
   case STRING_RESULT:
-    return &m_string_ptr;
+    return &m_string;
   case REAL_RESULT:
     str->set_real(real, NOT_FIXED_DEC, &my_charset_bin);
     return str;
@@ -4642,12 +4615,6 @@ bool Item_param::convert_str_value(THD *thd)
     rc= value.cs_info.convert_if_needed(thd, &value.m_string);
     /* Here str_value is guaranteed to be in final_character_set_of_str_value */
 
-    /*
-      str_value_ptr is returned from val_str(). It must be not alloced
-      to prevent it's modification by val_str() invoker.
-    */
-    value.m_string_ptr.set(value.m_string.ptr(), value.m_string.length(),
-                           value.m_string.charset());
     /* Synchronize item charset and length with value charset */
     fix_charset_and_length_from_str_value(value.m_string, DERIVATION_COERCIBLE);
   }
@@ -4789,7 +4756,7 @@ Item_param::set_param_type_and_swap_value(Item_param *src)
   null_value= src->null_value;
   state= src->state;
 
-  value.swap(src->value);
+  swap_variables(PValue, value, src->value);
 }
 
 

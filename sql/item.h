@@ -3845,54 +3845,46 @@ class Item_param :public Item_basic_value,
 
   bool m_empty_string_is_null;
 
-  class PValue_simple
+  class PValue: public Type_handler_hybrid_field_type, public Value_source
   {
   public:
+    PValue(): Type_handler_hybrid_field_type(&type_handler_null) {}
+    CONVERSION_INFO cs_info;
+    my_decimal m_decimal;
+    String m_string;
+
     union
     {
       longlong integer;
       double   real;
-      CONVERSION_INFO cs_info;
-      MYSQL_TIME     time;
+      MYSQL_TIME time;
     };
-    void swap(PValue_simple &other)
-    {
-      swap_variables(PValue_simple, *this, other);
-    }
-  };
 
-  class PValue: public Type_handler_hybrid_field_type,
-                public PValue_simple,
-                public Value_source
-  {
-  public:
-    PValue(): Type_handler_hybrid_field_type(&type_handler_null) {}
-    my_decimal m_decimal;
-    String m_string;
-    /*
-      A buffer for string and long data values. Historically all allocated
-      values returned from val_str() were treated as eligible to
-      modification. I. e. in some cases Item_func_concat can append it's
-      second argument to return value of the first one. Because of that we
-      can't return the original buffer holding string data from val_str(),
-      and have to have one buffer for data and another just pointing to
-      the data. This is the latter one and it's returned from val_str().
-      Can not be declared inside the union as it's not a POD type.
-    */
-    String m_string_ptr;
-
-    void swap(PValue &other)
+    PValue &operator=(PValue &other)
     {
-      Type_handler_hybrid_field_type::swap(other);
-      PValue_simple::swap(other);
-      m_decimal.swap(other.m_decimal);
-      m_string.swap(other.m_string);
-      m_string_ptr.swap(other.m_string_ptr);
+      free();
+      set_handler(other.type_handler());
+      cs_info= other.cs_info;
+      switch (type_handler()->cmp_type()) {
+      case STRING_RESULT:       m_string.move(other.m_string); break;
+      case REAL_RESULT:         real= other.real; break;
+      case INT_RESULT:          integer= other.integer; break;
+      case DECIMAL_RESULT:      m_decimal= other.m_decimal; break;
+      case TIME_RESULT:         time= other.time; break;
+      case ROW_RESULT:          DBUG_ASSERT(0); break;
+      }
+      return *this;
     }
     double val_real() const;
     longlong val_int(const Type_std_attributes *attr) const;
     my_decimal *val_decimal(my_decimal *dec, const Type_std_attributes *attr);
     String *val_str(String *str, const Type_std_attributes *attr);
+    void free()
+    {
+      if (type_handler()->cmp_type() == STRING_RESULT)
+        m_string.free();
+    }
+    ~PValue() { free(); }
   };
 
   PValue value;
