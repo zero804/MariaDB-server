@@ -8545,8 +8545,8 @@ Type_handler_decimal_result::Item_const_eq(const Item_const *a,
                                            const Item_const *b,
                                            bool binary_cmp) const
 {
-  const my_decimal *da= a->const_ptr_my_decimal();
-  const my_decimal *db= b->const_ptr_my_decimal();
+  const my_decimal_pod *da= a->const_ptr_my_decimal();
+  const my_decimal_pod *db= b->const_ptr_my_decimal();
   return !da->cmp(db) &&
          (!binary_cmp ||
           a->get_type_all_attributes_from_const()->decimals ==

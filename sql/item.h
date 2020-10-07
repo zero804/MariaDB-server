@@ -712,7 +712,7 @@ public:
   virtual bool const_is_null() const { return false; }
   virtual const longlong *const_ptr_longlong() const { return NULL; }
   virtual const double *const_ptr_double() const { return NULL; }
-  virtual const my_decimal *const_ptr_my_decimal() const { return NULL; }
+  virtual const my_decimal_pod *const_ptr_my_decimal() const { return NULL; }
   virtual const MYSQL_TIME *const_ptr_mysql_time() const { return NULL; }
   virtual const String *const_ptr_string() const { return NULL; }
 };
@@ -3850,7 +3850,6 @@ class Item_param :public Item_basic_value,
   public:
     PValue(): Type_handler_hybrid_field_type(&type_handler_null) {}
     CONVERSION_INFO cs_info;
-    my_decimal m_decimal;
     String m_string;
 
     union
@@ -3858,6 +3857,7 @@ class Item_param :public Item_basic_value,
       longlong integer;
       double   real;
       MYSQL_TIME time;
+      my_decimal_pod m_decimal;
     };
 
     PValue &operator=(PValue &other)
@@ -3969,7 +3969,7 @@ public:
   const double *const_ptr_double() const
   { return can_return_const_value(REAL_RESULT) ? &value.real : NULL; }
   const my_decimal *const_ptr_my_decimal() const
-  { return can_return_const_value(DECIMAL_RESULT) ? &value.m_decimal : NULL; }
+  { return can_return_const_value(DECIMAL_RESULT) ? (my_decimal*)&value.m_decimal : NULL; }
   const MYSQL_TIME *const_ptr_mysql_time() const
   { return can_return_const_value(TIME_RESULT) ? &value.time : NULL; }
   const String *const_ptr_string() const

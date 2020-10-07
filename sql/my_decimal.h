@@ -263,19 +263,19 @@ bool str_set_decimal(uint mask, const my_decimal *val, uint fixed_prec,
 extern my_decimal decimal_zero;
 
 inline
-void max_my_decimal(my_decimal *to, int precision, int frac)
+void max_my_decimal(my_decimal_pod *to, int precision, int frac)
 {
   DBUG_ASSERT((precision <= DECIMAL_MAX_PRECISION)&&
               (frac <= DECIMAL_MAX_SCALE));
   max_decimal(precision, frac, to);
 }
 
-inline void max_internal_decimal(my_decimal *to)
+inline void max_internal_decimal(my_decimal_pod *to)
 {
   max_my_decimal(to, DECIMAL_MAX_PRECISION, 0);
 }
 
-inline int check_result_and_overflow(uint mask, int result, my_decimal *val)
+inline int check_result_and_overflow(uint mask, int result, my_decimal_pod *val)
 {
   if (check_result(mask, result) & E_DEC_OVERFLOW)
   {
@@ -404,7 +404,7 @@ int my_decimal2double(uint, const decimal_t *d, double *result)
 
 
 inline
-int str2my_decimal(uint mask, const char *str, my_decimal *d, char **end)
+int str2my_decimal(uint mask, const char *str, my_decimal_pod *d, char **end)
 {
   return check_result_and_overflow(mask, string2decimal(str, d, end), d);
 }

@@ -4061,6 +4061,7 @@ void Item_param::set_decimal(const char *str, ulong length)
   DBUG_ASSERT(value.type_handler()->cmp_type() == DECIMAL_RESULT);
 
   end= (char*) str+length;
+  value.m_decimal.init();
   str2my_decimal(E_DEC_FATAL_ERROR, str, &value.m_decimal, &end);
   state= SHORT_DATA_VALUE;
   decimals= value.m_decimal.frac;
@@ -4452,7 +4453,7 @@ my_decimal *Item_param::PValue::val_decimal(my_decimal *dec,
 {
   switch (type_handler()->cmp_type()) {
   case DECIMAL_RESULT:
-    return &m_decimal;
+    return (my_decimal*)&m_decimal;
   case REAL_RESULT:
     double2my_decimal(E_DEC_FATAL_ERROR, real, dec);
     return dec;
