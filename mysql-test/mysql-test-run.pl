@@ -173,6 +173,7 @@ our $opt_vs_config = $ENV{'MTR_VS_CONFIG'};
 my @DEFAULT_SUITES= qw(
     main-
     archive-
+    atomic-
     binlog-
     binlog_encryption-
     client-
