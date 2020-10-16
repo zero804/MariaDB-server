@@ -1682,7 +1682,9 @@ bool open_table(THD *thd, TABLE_LIST *table_list, Open_table_context *ot_ctx)
 
   if (!(flags & MYSQL_OPEN_IGNORE_KILLED) && thd->killed)
   {
-    thd->send_kill_message();
+    /* If we already sent 'ok', we can ignore any kill query statements */
+        if (! thd->get_stmt_da()->is_set())
+          thd->send_kill_message();
     DBUG_RETURN(TRUE);
   }
 
