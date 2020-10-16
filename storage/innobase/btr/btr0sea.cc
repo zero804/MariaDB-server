@@ -1750,10 +1750,6 @@ btr_search_update_hash_on_insert(btr_cur_t* cursor)
 #ifdef MYSQL_INDEX_DISABLE_AHI
 	if (cursor->index->disable_ahi) return;
 #endif
-	if (!btr_search_enabled) {
-		return;
-	}
-
 	block = btr_cur_get_block(cursor);
 
 	ut_ad(rw_lock_own(&(block->lock), RW_LOCK_X));
@@ -1797,7 +1793,7 @@ btr_search_update_hash_on_insert(btr_cur_t* cursor)
 	}
 
 	rw_lock_t* const latch = btr_get_search_latch(index);
-	hash_table_t* const table = btr_get_search_table(index);
+	hash_table_t* table;
 	bool locked = false;
 
 	if (!page_rec_is_infimum(rec)) {
@@ -1814,6 +1810,7 @@ btr_search_update_hash_on_insert(btr_cur_t* cursor)
 				goto function_exit;
 			}
 
+			table = btr_get_search_table(index);
 			ha_insert_for_fold(table, ins_fold, block, ins_rec);
 		}
 
@@ -1829,6 +1826,8 @@ btr_search_update_hash_on_insert(btr_cur_t* cursor)
 			if (!btr_search_enabled || !block->index) {
 				goto function_exit;
 			}
+
+			table = btr_get_search_table(index);
 		}
 
 		if (!left_side) {
@@ -1849,6 +1848,8 @@ check_next_rec:
 				if (!btr_search_enabled || !block->index) {
 					goto function_exit;
 				}
+
+				table = btr_get_search_table(index);
 			}
 
 			ha_insert_for_fold(table, ins_fold, block, ins_rec);
@@ -1865,6 +1866,8 @@ check_next_rec:
 			if (!btr_search_enabled || !block->index) {
 				goto function_exit;
 			}
+
+			table = btr_get_search_table(index);
 		}
 
 		if (!left_side) {
