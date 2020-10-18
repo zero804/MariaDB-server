@@ -348,7 +348,14 @@ sub resolve_at_variable {
       "can be used to resolve '$option_name' for test '$self->{testname}'";
 
     my $value= $from_group->value($option_name);
-    $res .= $before.$value;
+    if (!defined($value))
+    {
+      croak "group: $group_name  option_name: $option_name is undefined";
+    }
+    else
+    {
+      $res .= $before.$value;
+    }
   }
   $res .= $after;
 
