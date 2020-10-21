@@ -1,0 +1,23 @@
+source include/have_partition.inc;
+source include/have_sequence.inc;
+source have_federatedx.inc;
+source include/federated.inc;
+connection slave;
+use federated;
+create table t1_1 (x int, b text, key(x));
+create table t1_2 (x int, b text, key(x));
+connection master;
+eval create table t1 (x int, b text, key(x)) engine=federated
+  partition by range columns (x) (
+  partition p1 values less than (40) connection='mysql://root@127.0.0.1:$SLAVE_MYPORT/federated/t1_1',
+  partition pn values less than (maxvalue) connection='mysql://root@127.0.0.1:$SLAVE_MYPORT/federated/t1_2'
+);
+insert t1 select seq, seq from seq_1_to_35;
+insert t1 select seq, repeat(seq, 100) from seq_50_to_90;
+flush tables;
+select x, b from t1 where x > 30 and x < 60 order by x;
+select x, b from t1 where x > 30 and x < 60 order by b;
+drop table t1;
+connection slave;
+drop table t1_1, t1_2;
+source include/federated_cleanup.inc;
