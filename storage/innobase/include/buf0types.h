@@ -181,6 +181,11 @@ public:
 		m_space = m_page_no = ULINT32_UNDEFINED;
 	}
 
+	inline void copy_from(const page_id_t& src)
+	{
+		m_space = src.space();
+		m_page_no = src.page_no();
+	}
 private:
 
 	/** Tablespace id. */

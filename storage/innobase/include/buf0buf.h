@@ -101,10 +101,6 @@ extern	buf_pool_t*	buf_pool_ptr;	/*!< The buffer pools
 extern	volatile bool	buf_pool_withdrawing; /*!< true when withdrawing buffer
 					pool pages might cause page relocation */
 
-extern	volatile ulint	buf_withdraw_clock; /*!< the clock is incremented
-					every time a pointer to a page may
-					become obsolete */
-
 # ifdef UNIV_DEBUG
 extern my_bool	buf_disable_resize_buffer_pool_debug; /*!< if TRUE, resizing
 					buffer pool is not allowed. */
@@ -1159,6 +1155,16 @@ buf_pointer_is_block_field(
 #define buf_pool_is_block_lock(l)			\
 	buf_pointer_is_block_field((const void*)(l))
 
+/** Find out if a pointer belongs to a buf_block_t. It can be a
+pointer to the buf_block_t itself or a member of it. This functions
+checks one of the buffer pool instances.
+@param[in] buf_pool  buffer pool instance
+@param[in] ptr       pointer not dereferenced
+@return TRUE if ptr belongs to a buf_block_t struct */
+ibool
+buf_pointer_is_block_field_instance(const buf_pool_t *buf_pool,
+                                    const void *ptr);
+
 /** Initialize a page for read to the buffer buf_pool. If the page is
 (1) already in buf_pool, or
 (2) if we specify to read only ibuf pages and the page is not an ibuf page, or
@@ -1372,14 +1378,6 @@ buf_get_nth_chunk_block(
 	const buf_pool_t* buf_pool,	/*!< in: buffer pool instance */
 	ulint		n,		/*!< in: nth chunk in the buffer pool */
 	ulint*		chunk_size);	/*!< in: chunk size */
-
-/** Verify the possibility that a stored page is not in buffer pool.
-@param[in]	withdraw_clock	withdraw clock when stored the page
-@retval true	if the page might be relocated */
-UNIV_INLINE
-bool
-buf_pool_is_obsolete(
-	ulint	withdraw_clock);
 
 /** Calculate aligned buffer pool size based on srv_buf_pool_chunk_unit,
 if needed.

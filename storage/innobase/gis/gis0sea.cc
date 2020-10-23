@@ -1256,6 +1256,22 @@ rtr_check_discard_page(
 	lock_mutex_exit();
 }
 
+/** Structure acts as functor to get the optimistic access of the page.
+It returns true if it successfully gets the page. */ 
+struct Buf_page_optimistic_get_functor_t
+{
+  btr_pcur_t * &r_cursor;
+  const char *file;
+  ulint line;
+  mtr_t * &mtr;
+
+  bool operator()(buf_block_t *hint) const
+  {
+    return hint != NULL && buf_page_optimistic_get(
+       RW_X_LATCH, hint, r_cursor->modify_clock, file, line, mtr);
+  }
+};
+
 /** Restore the stored position of a persistent cursor bufferfixing the page */
 static
 bool
@@ -1289,11 +1305,9 @@ rtr_cur_restore_position(
 
 	ut_ad(latch_mode == BTR_CONT_MODIFY_TREE);
 
-	if (!buf_pool_is_obsolete(r_cursor->withdraw_clock)
-	    && buf_page_optimistic_get(RW_X_LATCH,
-				       r_cursor->block_when_stored,
-				       r_cursor->modify_clock,
-				       __FILE__, __LINE__, mtr)) {
+	Buf_page_optimistic_get_functor_t functor=
+		{r_cursor,__FILE__, __LINE__, mtr};
+	if (r_cursor->block_when_stored.run_with_hint(functor)) {
 		ut_ad(r_cursor->pos_state == BTR_PCUR_IS_POSITIONED);
 
 		ut_ad(r_cursor->rel_pos == BTR_PCUR_ON);

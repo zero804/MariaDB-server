@@ -174,11 +174,10 @@ before_first:
 		index, rec, &cursor->old_n_fields,
 		&cursor->old_rec_buf, &cursor->buf_size);
 
-	cursor->block_when_stored = block;
+	cursor->block_when_stored.store(block);
 
 	/* Function try to check if block is S/X latch. */
 	cursor->modify_clock = buf_block_get_modify_clock(block);
-	cursor->withdraw_clock = buf_withdraw_clock;
 }
 
 /**************************************************************//**
@@ -207,6 +206,24 @@ btr_pcur_copy_stored_position(
 
 	pcur_receive->old_n_fields = pcur_donate->old_n_fields;
 }
+
+/** Structure acts as functor to do the latching of leaf pages.
+It returns true if latching of leaf pages succeeded and false
+otherwise. */
+struct Btr_cur_optimistic_latch_leaves_functor_t{
+        btr_pcur_t * &cursor;
+        ulint &latch_mode;
+        const char *file;
+        ulint line;
+        mtr_t *&mtr;
+
+	bool operator() (buf_block_t *hint) const
+	{
+		return hint != NULL && btr_cur_optimistic_latch_leaves(
+			hint, cursor->modify_clock, &latch_mode,
+			btr_pcur_get_btr_cur(cursor), file, line, mtr);
+	}
+};
 
 /**************************************************************//**
 Restores the stored position of a persistent cursor bufferfixing the page and
@@ -270,7 +287,7 @@ btr_pcur_restore_position_func(
 		cursor->latch_mode =
 			BTR_LATCH_MODE_WITHOUT_INTENTION(latch_mode);
 		cursor->pos_state = BTR_PCUR_IS_POSITIONED;
-		cursor->block_when_stored = btr_pcur_get_block(cursor);
+		cursor->block_when_stored.clear();
 
 		return(FALSE);
 	}
@@ -285,11 +302,9 @@ btr_pcur_restore_position_func(
 	case BTR_MODIFY_PREV:
 		/* Try optimistic restoration. */
 
-		if (!buf_pool_is_obsolete(cursor->withdraw_clock)
-		    && btr_cur_optimistic_latch_leaves(
-			cursor->block_when_stored, cursor->modify_clock,
-			&latch_mode, btr_pcur_get_btr_cur(cursor),
-			file, line, mtr)) {
+		Btr_cur_optimistic_latch_leaves_functor_t functor=
+			{cursor,latch_mode,file,line,mtr};
+		if (cursor->block_when_stored.run_with_hint(functor)) {
 
 			cursor->pos_state = BTR_PCUR_IS_POSITIONED;
 			cursor->latch_mode = latch_mode;
@@ -388,11 +403,10 @@ btr_pcur_restore_position_func(
 		since the cursor can now be on a different page!
 		But we can retain the value of old_rec */
 
-		cursor->block_when_stored = btr_pcur_get_block(cursor);
+		cursor->block_when_stored.store(btr_pcur_get_block(cursor));
 		cursor->modify_clock = buf_block_get_modify_clock(
-						cursor->block_when_stored);
+					cursor->block_when_stored.block());
 		cursor->old_stored = true;
-		cursor->withdraw_clock = buf_withdraw_clock;
 
 		mem_heap_free(heap);
 
