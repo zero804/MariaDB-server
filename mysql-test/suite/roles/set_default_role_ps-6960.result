@@ -1,6 +1,6 @@
 select priv into @root_priv from mysql.global_priv where user='root' and host='localhost';
 create role r1;
-prepare stmt from "set password = '11111111111111111111111111111111111111111'";
+prepare stmt from "set password = '*1111111111111111111111111111111111111111'";
 execute stmt;
 prepare stmt from "set default role r1";
 execute stmt;

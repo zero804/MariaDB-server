@@ -158,9 +158,9 @@ create user mysqltest1 identified via ed25519 as password("good") OR unix_socket
 # invalid password,socket
 #
 --replace_result $creplace "create user USER"
-eval $creplace         identified via mysql_native_password as '1234567890123456789012345678901234567890a' OR unix_socket;
-create user mysqltest1 identified via mysql_native_password as '1234567890123456789012345678901234567890a' OR unix_socket;
-update mysql.global_priv set priv=replace(priv, '1234567890123456789012345678901234567890a', 'invalid password');
+eval $creplace         identified via mysql_native_password as '*234567890123456789012345678901234567890a' OR unix_socket;
+create user mysqltest1 identified via mysql_native_password as '*234567890123456789012345678901234567890a' OR unix_socket;
+update mysql.global_priv set priv=replace(priv, '*234567890123456789012345678901234567890a', 'invalid password');
 flush privileges;
 show create user mysqltest1;
 --echo # name match = ok
