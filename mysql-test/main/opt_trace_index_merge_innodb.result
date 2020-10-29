@@ -117,7 +117,11 @@ explain select * from t1 where pk1 != 0  and key1 = 1	{
                         "using_mrr": false,
                         "index_only": false,
                         "rows": 1000,
+<<<<<<< HEAD
                         "cost": 201.6536043,
+=======
+                        "cost": 204.01,
+>>>>>>> c05e571e7d53ba11a3422490cff0d93e6691ea62
                         "chosen": true
                       },
                       {
@@ -135,10 +139,17 @@ explain select * from t1 where pk1 != 0  and key1 = 1	{
                       "intersecting_indexes": [
                         {
                           "index": "key1",
+<<<<<<< HEAD
                           "index_scan_cost": 1.000146475,
                           "cumulated_index_scan_cost": 1.000146475,
                           "disk_sweep_cost": 1.001383604,
                           "cumulative_total_cost": 2.00153008,
+=======
+                          "index_scan_cost": 1.0001,
+                          "cumulated_index_scan_cost": 1.0001,
+                          "disk_sweep_cost": 1.0042,
+                          "cumulative_total_cost": 2.0043,
+>>>>>>> c05e571e7d53ba11a3422490cff0d93e6691ea62
                           "usable": true,
                           "matching_rows_now": 1,
                           "intersect_covering_with_this_index": false,
