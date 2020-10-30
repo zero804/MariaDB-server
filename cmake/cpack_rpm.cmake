@@ -198,15 +198,16 @@ SET(CPACK_RPM_shared_POST_INSTALL_SCRIPT_FILE ${CMAKE_SOURCE_DIR}/support-files/
 SET(CPACK_RPM_shared_POST_UNINSTALL_SCRIPT_FILE ${CMAKE_SOURCE_DIR}/support-files/rpm/shared-post.sh)
 
 MACRO(ALTERNATIVE_NAME real alt)
-  SET(ver "%{version}-%{release}")
-  IF (${epoch})
-    SET(ver "${epoch}:${ver}")
+  IF(${ARGC} GREATER 2)
+    SET(ver ${ARGV2})
+  ELSE()
+    SET(ver "${epoch}%{version}-%{release}")
   ENDIF()
 
   SET(p "CPACK_RPM_${real}_PACKAGE_PROVIDES")
   SET(${p} "${${p}} ${alt} = ${ver} ${alt}%{?_isa} = ${ver} config(${alt}) = ${ver}")
   SET(o "CPACK_RPM_${real}_PACKAGE_OBSOLETES")
-  SET(${o} "${${o}} ${alt} ${alt}%{?_isa}")
+  SET(${o} "${${o}} ${alt} <= ${ver}")
 ENDMACRO(ALTERNATIVE_NAME)
 
 ALTERNATIVE_NAME("devel"  "mysql-devel")
@@ -214,7 +215,9 @@ ALTERNATIVE_NAME("server" "mysql-server")
 ALTERNATIVE_NAME("test"   "mysql-test")
 
 # Argh! Different distributions call packages differently, to be a drop-in
-# replacement we have to fake distribution-speficic dependencies
+# replacement we have to fake distribution-specific dependencies
+# NOTE, use ALTERNATIVE_NAME when a package has a different name
+# in some distribution, it's not for adding new PROVIDES
 
 IF(RPM MATCHES "(rhel|centos)5")
   ALTERNATIVE_NAME("shared" "mysql")
@@ -222,7 +225,7 @@ ELSEIF(RPM MATCHES "(rhel|centos)6")
   ALTERNATIVE_NAME("client" "mysql")
   ALTERNATIVE_NAME("shared" "mysql-libs")
 ELSEIF(RPM MATCHES "fedora" OR RPM MATCHES "(rhel|centos)7")
-  SET(epoch 1) # this is fedora
+  SET(epoch 1:) # this is fedora
   ALTERNATIVE_NAME("client" "mariadb")
   ALTERNATIVE_NAME("client" "mysql")
   ALTERNATIVE_NAME("devel"  "mariadb-devel")
