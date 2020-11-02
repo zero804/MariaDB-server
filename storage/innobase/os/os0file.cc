@@ -4043,7 +4043,7 @@ bool os_aio_init(ulint n_reader_threads, ulint n_writer_threads, ulint)
 	if (srv_use_native_aio && !is_linux_native_aio_supported())
 		srv_use_native_aio = false;
 #endif
-	ret = srv_thread_pool->configure_aio(srv_use_native_aio, max_events);
+	ret = srv_thread_pool->configure_aio(true, max_events);
 	if(ret) {
 		ut_a(srv_use_native_aio);
 		srv_use_native_aio = false;

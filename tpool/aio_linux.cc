@@ -51,7 +51,7 @@ class aio_linux : public aio
       io_event event;
       struct timespec ts{0, 500000000};
       int ret = io_getevents(aio->m_io_ctx, 1, 1, &event, &ts);
-
+ 
       if (aio->m_in_shutdown)
         break;
 

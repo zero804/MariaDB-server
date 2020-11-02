@@ -39,6 +39,7 @@ namespace tpool
 
 #ifdef __linux__
   extern aio* create_linux_aio(thread_pool* tp, int max_io);
+  extern aio* create_uring_aio(thread_pool* tp, int max_io);
 #endif
 #ifdef _WIN32
   extern aio* create_win_aio(thread_pool* tp, int max_io);
@@ -268,7 +269,8 @@ public:
 #ifdef _WIN32
     return create_win_aio(this, max_io);
 #elif defined(__linux__)
-    return create_linux_aio(this,max_io);
+    return create_uring_aio(this, max_io);
+    //return create_linux_aio(this, max_io);
 #else
     return nullptr;
 #endif
