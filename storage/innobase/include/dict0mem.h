@@ -1368,6 +1368,9 @@ public:
 	everything in overflow) size of the longest possible row and index
 	of a field which made index records too big to fit on a page.*/
 	inline record_size_info_t record_size_info() const;
+
+	/** Empty the index content and reinitialize the root page */
+	void empty();
 };
 
 /** Detach a virtual column from an index.

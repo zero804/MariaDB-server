@@ -15731,7 +15731,7 @@ ha_innobase::external_lock(
 		can hold in some cases, e.g., at the start of a stored
 		procedure call (SQLCOM_CALL). */
 
-		if (m_prebuilt->select_lock_type != LOCK_NONE) {
+		if (m_prebuilt->select_lock_type == LOCK_X) {
 
 			bool disable_fk=
 			   (thd_test_options(thd, OPTION_NO_FOREIGN_KEY_CHECKS)

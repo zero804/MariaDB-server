@@ -95,16 +95,19 @@ row_log_online_op_try(
 	trx_id_t	trx_id)	/*!< in: transaction ID for insert,
 				or 0 for delete */
 	MY_ATTRIBUTE((nonnull, warn_unused_result));
-/******************************************************//**
-Logs an operation to a secondary index that is (or was) being created. */
+/** Logs an operation to a secondary index that is (or was) being
+created.
+@param	index	index, S or X latched
+@param	tuple	index tuple or nullptr for empting the index
+@param	trx_id	transaction ID for insert or 0 for delete, empty
+		the index
+@param	empty	True if empty the index */
 void
 row_log_online_op(
-/*==============*/
-	dict_index_t*	index,	/*!< in/out: index, S or X latched */
-	const dtuple_t*	tuple,	/*!< in: index tuple */
-	trx_id_t	trx_id)	/*!< in: transaction ID for insert,
-				or 0 for delete */
-	ATTRIBUTE_COLD __attribute__((nonnull));
+	dict_index_t*	index,
+	const dtuple_t*	tuple,
+	trx_id_t	trx_id,
+	bool		empty=false);
 
 /******************************************************//**
 Gets the error status of the online index rebuild log.
@@ -256,7 +259,13 @@ of an ALTER TABLE for this index.
 ulint
 row_log_estimate_work(
 	const dict_index_t*	index);
+
 #endif /* HAVE_PSI_STAGE_INTERFACE */
+
+/** Logs an empty operation of the table which means it should empty
+the table.
+@param index	clustered index */
+void row_log_table_empty(dict_index_t *index);
 
 #include "row0log.ic"
 
