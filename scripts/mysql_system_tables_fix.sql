@@ -646,16 +646,27 @@ UPDATE user SET Create_tablespace_priv = Super_priv WHERE @hadCreateTablespacePr
 
 ALTER TABLE user ADD plugin char(64) CHARACTER SET latin1 DEFAULT '' NOT NULL AFTER max_user_connections,
                  ADD authentication_string TEXT NOT NULL AFTER plugin;
-ALTER TABLE user MODIFY plugin char(64) CHARACTER SET latin1 DEFAULT '' NOT NULL,
-                 MODIFY authentication_string TEXT NOT NULL;
 ALTER TABLE user ADD password_expired ENUM('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL AFTER authentication_string;
 ALTER TABLE user ADD is_role enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL AFTER password_expired;
 ALTER TABLE user ADD default_role char(80) binary DEFAULT '' NOT NULL AFTER is_role;
 ALTER TABLE user ADD max_statement_time decimal(12,6) DEFAULT 0 NOT NULL AFTER default_role;
+
 -- Somewhere above, we ran ALTER TABLE user .... CONVERT TO CHARACTER SET utf8 COLLATE utf8_bin.
---  we want password_expired column to have collation utf8_general_ci.
-ALTER TABLE user MODIFY password_expired ENUM('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
-ALTER TABLE user MODIFY is_role enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
+-- we want password_expired column to have collation utf8_general_ci.
+-- Order columns correctly that were not ordered until MDEV-23201 (ff8ffef3e1915d7a9caa07d9461cd8d47c4baf98)
+
+ALTER TABLE user MODIFY plugin char(64) CHARACTER SET latin1 DEFAULT '' NOT NULL AFTER max_user_connections,
+                 MODIFY authentication_string TEXT NOT NULL AFTER plugin,
+                 MODIFY password_expired ENUM('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL AFTER authentication_string,
+                 MODIFY is_role enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL AFTER password_expired,
+                 MODIFY default_role char(80) binary DEFAULT '' NOT NULL AFTER is_role,
+                 MODIFY max_statement_time decimal(12,6) DEFAULT 0 NOT NULL AFTER default_role,
+-- MDEV-24122 formerly mysql users may have the following columns.
+-- These are not used until MariaDB-10.4 will use these in the creation of mysql.global_priv:
+-- As such the below shouldn't exist in MariaDB-10.4 or beyond.
+                 DROP COLUMN IF EXISTS password_lifetime,
+                 DROP COLUMN IF EXISTS password_last_changed,
+		 DROP COLUMN IF EXISTS account_locked;
 
 -- Need to pre-fill mysql.proxies_priv with access for root even when upgrading from
 -- older versions
