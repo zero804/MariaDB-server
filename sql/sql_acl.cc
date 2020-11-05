@@ -930,6 +930,247 @@ class Grant_table_base
   TABLE_LIST tl;
 };
 
+static const
+TABLE_FIELD_TYPE user_table_fields[] =
+{
+  {
+    { C_STRING_WITH_LEN("Host") },
+    { C_STRING_WITH_LEN("char(60)") },
+    { C_STRING_WITH_LEN("utf8") }
+  },
+  {
+    { C_STRING_WITH_LEN("User") },
+    { C_STRING_WITH_LEN("char(80)") },
+    { C_STRING_WITH_LEN("utf8") }
+  },
+  {
+    { C_STRING_WITH_LEN("Password") },
+    { C_STRING_WITH_LEN("char(41)") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Select_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Insert_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Update_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Delete_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Create_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Drop_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Reload_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Shutdown_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Process_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("File_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Grant_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("References_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Index_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Alter_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Show_db_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Super_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Create_tmp_table_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Lock_tables_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Execute_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Repl_slave_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Repl_client_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Create_view_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Show_view_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Create_routine_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Alter_routine_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Create_user_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Event_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Trigger_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("Create_tablespace_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("ssl_type") },
+    { C_STRING_WITH_LEN("enum('','ANY','X509','SPECIFIED')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("ssl_cipher") },
+    { C_STRING_WITH_LEN("blob") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("x509_issuer") },
+    { C_STRING_WITH_LEN("blob") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("x509_subject") },
+    { C_STRING_WITH_LEN("blob") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("max_questions") },
+    { C_STRING_WITH_LEN("int") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("max_updates") },
+    { C_STRING_WITH_LEN("int") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("max_connections") },
+    { C_STRING_WITH_LEN("int") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("max_user_connections") },
+    { C_STRING_WITH_LEN("int") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("plugin") },
+    { C_STRING_WITH_LEN("char(64)") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("authentication_string") },
+    { C_STRING_WITH_LEN("text") },
+    { C_STRING_WITH_LEN("utf8") }
+  },
+  {
+    { C_STRING_WITH_LEN("password_expired") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("is_role") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("default_role") },
+    { C_STRING_WITH_LEN("char(80") },
+    { C_STRING_WITH_LEN("utf8") }
+  },
+  {
+    { C_STRING_WITH_LEN("max_statement_time") },
+    { C_STRING_WITH_LEN("decimal(12,6)") },
+    { NULL, 0 }
+  }
+};
+
+static const TABLE_FIELD_DEF
+user_table_def= {array_elements(user_table_fields), user_table_fields, 0, (uint*) 0 };
+
+/** Single instance used to control printing to the error log. */
+static Table_check_intact_log_error user_table_intact;
+
 class User_table: public Grant_table_base
 {
  public:
@@ -1976,6 +2217,15 @@ static bool acl_load(THD *thd, const Grant_tables& tables)
       mysql_user_table_is_in_short_password_format= false;
       mysql_mutex_unlock(&LOCK_global_system_variables);
     }
+  }
+
+  if (!opt_bootstrap && !mysql_user_table_is_in_short_password_format &&
+      user_table_intact.check(user_table.table(), &user_table_def)
+          == Table_check_intact::CHECK_BAD)
+  {
+    sql_print_warning("mysql.user table is in "
+                      "unsupported structure, run mysql_upgrade or "
+		      "alter to expected structure");
   }
 
   allow_all_hosts=0;

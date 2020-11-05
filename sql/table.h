@@ -488,14 +488,15 @@ class Table_check_intact
 {
 protected:
   bool has_keys;
-  virtual void report_error(uint code, const char *fmt, ...)= 0;
+  virtual void report(enum loglevel level, uint code, const char *fmt, ...)= 0;
 
 public:
   Table_check_intact(bool keys= false) : has_keys(keys) {}
   virtual ~Table_check_intact() {}
 
+  enum check_result { CHECK_OK= 0, CHECK_BAD, CHECK_COL_COUNT };
   /** Checks whether a table is intact. */
-  bool check(TABLE *table, const TABLE_FIELD_DEF *table_def);
+  enum check_result check(TABLE *table, const TABLE_FIELD_DEF *table_def);
 };
 
 
@@ -505,7 +506,7 @@ public:
 class Table_check_intact_log_error : public Table_check_intact
 {
 protected:
-  void report_error(uint, const char *fmt, ...);
+  void report(enum loglevel, uint, const char *fmt, ...);
 public:
   Table_check_intact_log_error() : Table_check_intact(true) {}
 };

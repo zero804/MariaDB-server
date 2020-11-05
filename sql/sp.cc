@@ -350,16 +350,17 @@ public:
   Proc_table_intact() : m_print_once(TRUE) { has_keys= TRUE; }
 
 protected:
-  void report_error(uint code, const char *fmt, ...);
+  void report(enum loglevel level, uint code, const char *fmt, ...);
 };
 
 
 /**
   Report failure to validate the mysql.proc table definition.
   Print a message to the error log only once.
+  loglevel is ignored.
 */
 
-void Proc_table_intact::report_error(uint code, const char *fmt, ...)
+void Proc_table_intact::report(enum loglevel level, uint code, const char *fmt, ...)
 {
   va_list args;
   char buf[512];

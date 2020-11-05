@@ -10,6 +10,9 @@ use mysql;
 #
 # downgrade the table to pre-default-role structure
 #
+call mtr.add_suppression('mysql.user table is in unsupported structure');
+call mtr.add_suppression('Column count of mysql.user is wrong.');
+
 alter table user drop column is_role;
 alter table user drop column default_role;
 alter table user drop column max_statement_time;

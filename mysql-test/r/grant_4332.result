@@ -1,5 +1,6 @@
 set GLOBAL sql_mode="";
 set LOCAL sql_mode="";
+call mtr.add_suppression('mysql.user table is in unsupported structure');
 alter table mysql.user modify User char(16) binary not null default '';
 alter table mysql.db modify User char(16) binary not null default '';
 alter table mysql.tables_priv modify User char(16) binary not null default '';

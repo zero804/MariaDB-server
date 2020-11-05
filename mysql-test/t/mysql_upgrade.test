@@ -263,6 +263,9 @@ DROP TABLE IF EXISTS mysql.user;
 --copy_file std_data/mysql57user.MYD $MYSQLD_DATADIR/mysql/user.MYD
 FLUSH TABLES mysql.user;
 
+call mtr.add_suppression('mysql.user table is in unsupported structure');
+call mtr.add_suppression('Column count of mysql.user is wrong.');
+
 # What prior to MDEV-23201 would of done:
 ALTER TABLE mysql.user ADD is_role enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
 ALTER TABLE mysql.user ADD default_role char(80) binary DEFAULT '' NOT NULL;

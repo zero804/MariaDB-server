@@ -4212,19 +4212,17 @@ bool check_column_name(const char *name)
   @param[in] table_def         Expected structure of the table (column name
                                and type)
 
-  @retval  FALSE  OK
-  @retval  TRUE   There was an error. An error message is output
-                  to the error log.  We do not push an error
-                  message into the error stack because this
-                  function is currently only called at start up,
-                  and such errors never reach the user.
+  @retval  CHECK_OK            No difference
+  @retval  CHECK_BAD           Significant error in column defination
+  @retval  CHECK_COL_COUNT     Too many columns present, but those present are of
+                               correct type.
 */
 
-bool
+enum Table_check_intact::check_result
 Table_check_intact::check(TABLE *table, const TABLE_FIELD_DEF *table_def)
 {
   uint i;
-  my_bool error= FALSE;
+  check_result error= CHECK_OK;
   const TABLE_FIELD_TYPE *field_def= table_def->field;
   DBUG_ENTER("table_check_intact");
   DBUG_PRINT("info",("table: %s  expected_count: %d",
@@ -4237,35 +4235,43 @@ Table_check_intact::check(TABLE *table, const TABLE_FIELD_DEF *table_def)
   if (table->s->fields != table_def->count)
   {
     THD *thd= current_thd;
+    /* Too many columns, only informational warning, too few is definately an error */
+    enum loglevel level= (table->s->fields < table_def->count) ? ERROR_LEVEL : INFORMATION_LEVEL;
     DBUG_PRINT("info", ("Column count has changed, checking the definition"));
 
     /* previous MySQL version */
     if (MYSQL_VERSION_ID > table->s->mysql_version)
     {
-      report_error(ER_COL_COUNT_DOESNT_MATCH_PLEASE_UPDATE,
-                   ER_THD(thd, ER_COL_COUNT_DOESNT_MATCH_PLEASE_UPDATE),
-                   table->alias.c_ptr(), table_def->count, table->s->fields,
-                   static_cast<int>(table->s->mysql_version),
-                   MYSQL_VERSION_ID);
-      DBUG_RETURN(TRUE);
+      report(level, ER_COL_COUNT_DOESNT_MATCH_PLEASE_UPDATE,
+             ER_THD(thd, ER_COL_COUNT_DOESNT_MATCH_PLEASE_UPDATE),
+             table->alias.c_ptr(), table_def->count, table->s->fields,
+             static_cast<int>(table->s->mysql_version),
+             MYSQL_VERSION_ID);
     }
     else if (MYSQL_VERSION_ID == table->s->mysql_version)
     {
-      report_error(ER_COL_COUNT_DOESNT_MATCH_CORRUPTED_V2,
-                   ER_THD(thd, ER_COL_COUNT_DOESNT_MATCH_CORRUPTED_V2),
-                   table->s->db.str, table->s->table_name.str,
-                   table_def->count, table->s->fields);
-      DBUG_RETURN(TRUE);
+      report(level, ER_COL_COUNT_DOESNT_MATCH_CORRUPTED_V2,
+             ER_THD(thd, ER_COL_COUNT_DOESNT_MATCH_CORRUPTED_V2),
+             table->s->db.str, table->s->table_name.str,
+             table_def->count, table->s->fields);
+    }
+    if (level == ERROR_LEVEL)
+    {
+      DBUG_RETURN(CHECK_BAD);
     }
     /*
-      Something has definitely changed, but we're running an older
-      version of MySQL with new system tables.
-      Let's check column definitions. If a column was added at
+      Our current column count error can be overwritten to the more
+      serious CHECK_BAD being the column defination is wrong
+    */
+    error= CHECK_COL_COUNT;
+    /*
+      Something has definitely changed, since there is sufficent
+      columns let's check their definitions. If a column was added at
       the end of the table, then we don't care much since such change
       is backward compatible.
     */
   }
-  else
+
   {
   StringBuffer<1024> sql_type(system_charset_info);
   sql_type.extra_allocation(256); // Allocate min 256 characters at once
@@ -4284,11 +4290,11 @@ Table_check_intact::check(TABLE *table, const TABLE_FIELD_DEF *table_def)
           Still this can be a sign of a tampered table, output an error
           to the error log.
         */
-        report_error(0, "Incorrect definition of table %s.%s: "
-                     "expected column '%s' at position %d, found '%s'.",
-                     table->s->db.str, table->alias.c_ptr(),
-                     field_def->name.str, i,
-                     field->field_name);
+        report(ERROR_LEVEL, 0, "Incorrect definition of table %s.%s: "
+               "expected column '%s' at position %d, found '%s'.",
+               table->s->db.str, table->alias.c_ptr(),
+               field_def->name.str, i,
+               field->field_name);
       }
       field->sql_type(sql_type);
       /*
@@ -4311,45 +4317,45 @@ Table_check_intact::check(TABLE *table, const TABLE_FIELD_DEF *table_def)
       if (strncmp(sql_type.c_ptr_safe(), field_def->type.str,
                   field_def->type.length - 1))
       {
-        report_error(0, "Incorrect definition of table %s.%s: "
-                     "expected column '%s' at position %d to have type "
-                     "%s, found type %s.", table->s->db.str,
-                     table->alias.c_ptr(),
-                     field_def->name.str, i, field_def->type.str,
-                     sql_type.c_ptr_safe());
-        error= TRUE;
+        report(ERROR_LEVEL, 0, "Incorrect definition of table %s.%s: "
+               "expected column '%s' at position %d to have type "
+               "%s, found type %s.", table->s->db.str,
+               table->alias.c_ptr(),
+               field_def->name.str, i, field_def->type.str,
+               sql_type.c_ptr_safe());
+        error= CHECK_BAD;
       }
       else if (field_def->cset.str && !field->has_charset())
       {
-        report_error(0, "Incorrect definition of table %s.%s: "
-                     "expected the type of column '%s' at position %d "
-                     "to have character set '%s' but the type has no "
-                     "character set.", table->s->db.str,
-                     table->alias.c_ptr(),
-                     field_def->name.str, i, field_def->cset.str);
-        error= TRUE;
+        report(ERROR_LEVEL, 0, "Incorrect definition of table %s.%s: "
+               "expected the type of column '%s' at position %d "
+               "to have character set '%s' but the type has no "
+               "character set.", table->s->db.str,
+               table->alias.c_ptr(),
+               field_def->name.str, i, field_def->cset.str);
+        error= CHECK_BAD;
       }
       else if (field_def->cset.str &&
                strcmp(field->charset()->csname, field_def->cset.str))
       {
-        report_error(0, "Incorrect definition of table %s.%s: "
-                     "expected the type of column '%s' at position %d "
-                     "to have character set '%s' but found "
-                     "character set '%s'.", table->s->db.str,
-                     table->alias.c_ptr(),
-                     field_def->name.str, i, field_def->cset.str,
-                     field->charset()->csname);
-        error= TRUE;
+        report(ERROR_LEVEL, 0, "Incorrect definition of table %s.%s: "
+               "expected the type of column '%s' at position %d "
+               "to have character set '%s' but found "
+               "character set '%s'.", table->s->db.str,
+               table->alias.c_ptr(),
+               field_def->name.str, i, field_def->cset.str,
+               field->charset()->csname);
+        error= CHECK_BAD;
       }
     }
     else
     {
-      report_error(0, "Incorrect definition of table %s.%s: "
-                   "expected column '%s' at position %d to have type %s "
-                   " but the column is not found.",
-                   table->s->db.str, table->alias.c_ptr(),
-                   field_def->name.str, i, field_def->type.str);
-      error= TRUE;
+      report(ERROR_LEVEL, 0, "Incorrect definition of table %s.%s: "
+             "expected column '%s' at position %d to have type %s "
+             " but the column is not found.",
+             table->s->db.str, table->alias.c_ptr(),
+             field_def->name.str, i, field_def->type.str);
+      error= CHECK_BAD;
     }
   }
   }
@@ -4358,22 +4364,22 @@ Table_check_intact::check(TABLE *table, const TABLE_FIELD_DEF *table_def)
   {
     if (table->s->primary_key == MAX_KEY)
     {
-      report_error(0, "Incorrect definition of table %s.%s: "
-                   "missing primary key.", table->s->db.str,
-                   table->alias.c_ptr());
-      error= TRUE;
+      report(ERROR_LEVEL, 0, "Incorrect definition of table %s.%s: "
+             "missing primary key.", table->s->db.str,
+             table->alias.c_ptr());
+      error= CHECK_BAD;
     }
     else
     {
       KEY *pk= &table->s->key_info[table->s->primary_key];
       if (pk->user_defined_key_parts != table_def->primary_key_parts)
       {
-        report_error(0, "Incorrect definition of table %s.%s: "
-                     "Expected primary key to have %u columns, but instead "
-                     "found %u columns.", table->s->db.str,
-                     table->alias.c_ptr(), table_def->primary_key_parts,
-                     pk->user_defined_key_parts);
-        error= TRUE;
+        report(ERROR_LEVEL, 0, "Incorrect definition of table %s.%s: "
+               "Expected primary key to have %u columns, but instead "
+               "found %u columns.", table->s->db.str,
+               table->alias.c_ptr(), table_def->primary_key_parts,
+               pk->user_defined_key_parts);
+        error= CHECK_BAD;
       }
       else
       {
@@ -4381,41 +4387,41 @@ Table_check_intact::check(TABLE *table, const TABLE_FIELD_DEF *table_def)
         {
           if (table_def->primary_key_columns[i] + 1 != pk->key_part[i].fieldnr)
           {
-            report_error(0, "Incorrect definition of table %s.%s: Expected "
-                         "primary key part %u to refer to column %u, but "
-                         "instead found column %u.", table->s->db.str,
-                         table->alias.c_ptr(), i + 1,
-                         table_def->primary_key_columns[i] + 1,
-                         pk->key_part[i].fieldnr);
-            error= TRUE;
+            report(ERROR_LEVEL, 0, "Incorrect definition of table %s.%s: Expected "
+                   "primary key part %u to refer to column %u, but "
+                   "instead found column %u.", table->s->db.str,
+                   table->alias.c_ptr(), i + 1,
+                   table_def->primary_key_columns[i] + 1,
+                   pk->key_part[i].fieldnr);
+            error= CHECK_BAD;
           }
         }
       }
     }
   }
 
-  if (! error)
+  if (error == CHECK_OK)
     table->s->table_field_def_cache= table_def;
 
 end:
 
   if (has_keys && !error && !table->key_info)
   {
-    report_error(0, "Incorrect definition of table %s.%s: "
-                 "indexes are missing",
-                 table->s->db.str, table->alias.c_ptr());
-    error= TRUE;
+    report(ERROR_LEVEL, 0, "Incorrect definition of table %s.%s: "
+           "indexes are missing",
+           table->s->db.str, table->alias.c_ptr());
+    error= CHECK_BAD;
   }
 
   DBUG_RETURN(error);
 }
 
 
-void Table_check_intact_log_error::report_error(uint, const char *fmt, ...)
+void Table_check_intact_log_error::report(enum loglevel level, uint, const char *fmt, ...)
 {
   va_list args;
   va_start(args, fmt);
-  error_log_print(ERROR_LEVEL, fmt, args);
+  error_log_print(level, fmt, args);
   va_end(args);
 }
 
