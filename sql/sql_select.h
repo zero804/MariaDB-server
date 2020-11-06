@@ -185,8 +185,8 @@ typedef struct st_table_ref
 
 
 /*
-  Structure storing information of a field if it can resolve
-  an AND/OR conjunct by itself or via equality predicates with other fields.
+  Structure storing information for a field on which the entire predicate is
+  dependent on (directly or indirectly via equalities)
 */
 typedef struct same_field
 {
