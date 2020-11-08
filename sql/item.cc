@@ -9254,23 +9254,21 @@ bool Item_field::is_predicate_selectivity_available(void *arg)
     traversal.
   */
 
-  if (same_field_arg->field == NULL)
+  if (same_field_arg->item == NULL)
   {
-    same_field_arg->field= field;
-    same_field_arg->present_in_equalities= item_equal != NULL;
-    same_field_arg->item_eq= item_equal;
+    same_field_arg->item= this;
     same_field_arg->is_statistics_available= field->is_statistics_available();
     return false;
   }
 
   /* Found the same field while traversing the condition tree */
-  if (same_field_arg->field == field)
+  if (same_field_arg->item->field == field)
     return false;
 
-  if (!same_field_arg->present_in_equalities)
+  if (!same_field_arg->item->item_equal)
     return true;
 
-  return !(same_field_arg->item_eq == item_equal);
+  return !(same_field_arg->item->item_equal == item_equal);
 }
 
 

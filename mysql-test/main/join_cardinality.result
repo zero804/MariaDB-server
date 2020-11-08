@@ -647,4 +647,31 @@ JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
 [
     false
 ]
+#
+# Tests using different functional predicates
+#
+EXPLAIN SELECT * from t1 WHERE a < 5 XOR a > 10;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	10	Using where
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate')) FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+[
+    false
+]
+EXPLAIN SELECT * from t1 WHERE abs(a) > 10;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	10	Using where
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate')) FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+[
+    false
+]
+EXPLAIN SELECT * from t1 WHERE a > 10+1;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	a	a	5	NULL	1	Using index condition
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate')) FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+[
+    true
+]
 DROP TABLE t1;

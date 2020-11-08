@@ -119,4 +119,17 @@ SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate')) FROM INFOR
 EXPLAIN SELECT * from t1 WHERE t1.a=t1.b AND (abs(t1.a),t1.b) IN ((1,1), (2,2), (3,3));
 SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate')) FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
+--echo #
+--echo # Tests using different functional predicates
+--echo #
+
+EXPLAIN SELECT * from t1 WHERE a < 5 XOR a > 10;
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate')) FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+
+EXPLAIN SELECT * from t1 WHERE abs(a) > 10;
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate')) FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+
+EXPLAIN SELECT * from t1 WHERE a > 10+1;
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate')) FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+
 DROP TABLE t1;

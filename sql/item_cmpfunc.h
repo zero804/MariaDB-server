@@ -227,6 +227,7 @@ public:
   bool fix_length_and_dec() { decimals=0; max_length=1; return FALSE; }
   uint decimal_precision() const { return 1; }
   bool need_parentheses_in_default() { return true; }
+  bool is_predicate_selectivity_available(void *arg) { return TRUE; }
 };
 
 
@@ -3377,6 +3378,7 @@ public:
   SEL_TREE *get_mm_tree(RANGE_OPT_PARAM *param, Item **cond_ptr);
   Item *get_copy(THD *thd)
   { return get_item_copy<Item_cond_and>(thd, this); }
+  bool is_predicate_selectivity_available(void *arg) { return FALSE; }
 };
 
 inline bool is_cond_and(Item *item)
@@ -3401,6 +3403,7 @@ public:
   Item *neg_transformer(THD *thd);
   Item *get_copy(THD *thd)
   { return get_item_copy<Item_cond_or>(thd, this); }
+  bool is_predicate_selectivity_available(void *arg) { return FALSE; }
 };
 
 class Item_func_dyncol_check :public Item_bool_func

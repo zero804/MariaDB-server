@@ -29560,7 +29560,7 @@ bool JOIN::all_selectivity_accounted_for_join_cardinality()
     Item *item;
     while ((item= li++))
     {
-      SAME_FIELD arg= {NULL, this, FALSE, NULL, FALSE};
+      SAME_FIELD arg= {NULL, FALSE};
       if (item->walk(&Item::is_predicate_selectivity_available, 0, &arg))
         return false;
     }
@@ -29568,7 +29568,7 @@ bool JOIN::all_selectivity_accounted_for_join_cardinality()
   }
   else
   {
-    SAME_FIELD arg= {NULL, this, FALSE, NULL, FALSE};
+    SAME_FIELD arg= {NULL, FALSE};
     return !conds->walk(&Item::is_predicate_selectivity_available, 0, &arg);
   }
 }
@@ -29590,7 +29590,7 @@ bool JOIN::all_selectivity_accounted_for_join_cardinality()
 bool is_sargable_predicate(Item *item, Item *value, void *arg)
 {
   SAME_FIELD *field_arg= (SAME_FIELD*)arg;
-  if (!field_arg->is_statistics_available)
+  if (!field_arg->item->is_statistics_available)
     return false;
 
   Item *field= item->real_item();

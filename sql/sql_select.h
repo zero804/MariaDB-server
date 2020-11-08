@@ -190,19 +190,8 @@ typedef struct st_table_ref
 */
 typedef struct same_field
 {
-  /* Field structure */
-  Field *field;
-  /* Join structure */
-  JOIN *join;
-  /*
-    TRUE:  Field is present in a multiple equality
-    FALSE: Otherwise
-  */
-  bool present_in_equalities;
-  /*
-    The item_equal instance the field belongs to
-  */
-  Item_equal *item_eq;
+  /* field item for which the entire predicate depends on */
+  Item_field *item;
   /*
     TRUE : statistics available for the field via keys or EITS
     FALSE: otherwise
