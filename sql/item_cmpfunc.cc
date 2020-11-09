@@ -2106,12 +2106,16 @@ bool Item_func_between::count_sargable_conds(void *arg)
   return 0;
 }
 
-bool Item_func_between::is_predicate_selectivity_available(void *arg)
+bool Item_func_between::predicate_selectivity_checker(void *arg)
 {
+  SAME_FIELD *field_arg= (SAME_FIELD*)arg;
+  if (!field_arg->is_statistics_available)
+    return true;
+
   if (arguments()[0]->real_item()->type() == Item::FIELD_ITEM)
   {
-    if (is_sargable_predicate(args[0], args[1], arg) &&
-        is_sargable_predicate(args[0], args[2], arg))
+    if (is_range_predicate(args[0], args[1]) &&
+        is_range_predicate(args[0], args[2]))
       return false;
     return true;
   }
@@ -2120,7 +2124,7 @@ bool Item_func_between::is_predicate_selectivity_available(void *arg)
   {
     if (arguments()[i]->real_item()->type() == Item::FIELD_ITEM)
     {
-      if (!is_sargable_predicate(args[i], args[0], arg))
+      if (!is_range_predicate(args[i], args[0]))
         return true;
     }
   }
@@ -4311,11 +4315,8 @@ bool Item_func_in::count_sargable_conds(void *arg)
 }
 
 
-bool Item_func_in::is_predicate_selectivity_available(void *arg)
+bool Item_func_in::predicate_selectivity_checker(void *arg)
 {
-  if (const_item())
-    return false;
-
   SAME_FIELD *field_arg= (SAME_FIELD*)arg;
   if (!field_arg->is_statistics_available)
     return true;
@@ -5550,12 +5551,13 @@ bool Item_func_null_predicate::count_sargable_conds(void *arg)
 }
 
 
-bool Item_func_null_predicate::is_predicate_selectivity_available(void *arg)
+bool Item_func_null_predicate::predicate_selectivity_checker(void *arg)
 {
-  if (const_item())
-    return false;
+  SAME_FIELD *field_arg= (SAME_FIELD*)arg;
+  if (!field_arg->is_statistics_available)
+    return true;
 
-  if (is_sargable_predicate(args[0], NULL, arg))
+  if (is_range_predicate(args[0], NULL))
     return false;
   return true;
 }
@@ -5643,13 +5645,14 @@ bool Item_bool_func2::count_sargable_conds(void *arg)
 }
 
 
-bool Item_bool_func2::is_predicate_selectivity_available(void *arg)
+bool Item_bool_func2::predicate_selectivity_checker(void *arg)
 {
-  if (const_item())
-    return false;
+  SAME_FIELD *field_arg= (SAME_FIELD*)arg;
+  if (!field_arg->is_statistics_available)
+    return true;
 
-  if (is_sargable_predicate(args[0], args[1], arg) ||
-      is_sargable_predicate(args[1], args[0], arg))
+  if (is_range_predicate(args[0], args[1]) ||
+      is_range_predicate(args[1], args[0]))
     return false;
   return true;
 }
@@ -5759,15 +5762,16 @@ SEL_TREE *Item_func_like::get_mm_tree(RANGE_OPT_PARAM *param, Item **cond_ptr)
 }
 
 
-bool Item_func_like::is_predicate_selectivity_available(void *arg)
+bool Item_func_like::predicate_selectivity_checker(void *arg)
 {
-  if (const_item())
-    return false;
+  SAME_FIELD *field_arg= (SAME_FIELD*)arg;
+  if (!field_arg->is_statistics_available)
+    return true;
 
   if (with_sargable_pattern())
   {
-    if (is_sargable_predicate(args[0], args[1], arg) ||
-        is_sargable_predicate(args[1], args[0], arg))
+    if (is_range_predicate(args[0], args[1]) ||
+        is_range_predicate(args[1], args[0]))
       return false;
   }
   return true;
@@ -7212,11 +7216,11 @@ bool Item_equal::count_sargable_conds(void *arg)
 }
 
 
-bool Item_equal::is_predicate_selectivity_available(void *arg)
+bool Item_equal::predicate_selectivity_checker(void *arg)
 {
   /*
     For equality conditions like tbl1.col = tbl2.col
-    For such predicates all we want to know if the ndv is
+    we only want to know if the number of distinct values (ndv) is
     available for all the fields in the multiple equality or not.
   */
   Item_equal_fields_iterator it(*this);

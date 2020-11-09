@@ -1983,7 +1983,7 @@ public:
       FALSE  :  SUCCESS
       TRUE   :  OTHERWISE
   */
-  virtual bool is_predicate_selectivity_available(void *arg) { return FALSE; }
+  virtual bool predicate_selectivity_checker(void *arg) { return FALSE; }
   bool cleanup_is_expensive_cache_processor(void *arg)
   {
     is_expensive_cache= (int8)(-1);
@@ -3591,7 +3591,7 @@ public:
     return field->table->pos_in_table_list->outer_join;
   }
   bool check_index_dependence(void *arg);
-  bool is_predicate_selectivity_available(void *arg);
+  bool predicate_selectivity_checker(void *arg);
   friend class Item_default_value;
   friend class Item_insert_value;
   friend class st_select_lex_unit;

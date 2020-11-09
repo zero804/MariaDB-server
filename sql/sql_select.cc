@@ -29561,7 +29561,7 @@ bool JOIN::all_selectivity_accounted_for_join_cardinality()
     while ((item= li++))
     {
       SAME_FIELD arg= {NULL, FALSE};
-      if (item->walk(&Item::is_predicate_selectivity_available, 0, &arg))
+      if (item->walk(&Item::predicate_selectivity_checker, 0, &arg))
         return false;
     }
     return true;
@@ -29569,30 +29569,34 @@ bool JOIN::all_selectivity_accounted_for_join_cardinality()
   else
   {
     SAME_FIELD arg= {NULL, FALSE};
-    return !conds->walk(&Item::is_predicate_selectivity_available, 0, &arg);
+    return !conds->walk(&Item::predicate_selectivity_checker, 0, &arg);
   }
 }
 
 
 /*
   @brief
-    Checks if a predicate is sargable or not
+    Checks if a predicate is a range predicate with a constant part
+
+  @param
+
+    @item          the item referring to the field of the table
+    @value         the item referring to the expression on the
+                   rhs of a predicate
 
   @details
-    Sargable predicate is defined as the form of field op const
+    Range predicate is defined as the form of field op const
     where op can be operators like </<=/=/>/>=/BETWEEN etc.
-    Also the statistics for the field should be available via an index or EITS.
+    Also the statistics for the field should be available via
+    an index or statistical tables.
+
   @retval
-    TRUE  : Sargable predicate
+    TRUE  : Success
     FALSE : Otherwise
 */
 
-bool is_sargable_predicate(Item *item, Item *value, void *arg)
+bool is_range_predicate(Item *item, Item *value)
 {
-  SAME_FIELD *field_arg= (SAME_FIELD*)arg;
-  if (!field_arg->item->is_statistics_available)
-    return false;
-
   Item *field= item->real_item();
   if (field->type() == Item::FIELD_ITEM && !field->const_item() &&
       (!value || !value->is_expensive()))

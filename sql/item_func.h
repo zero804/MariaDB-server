@@ -399,7 +399,7 @@ public:
   Item_func *get_item_func() { return this; }
   bool is_simplified_cond_processor(void *arg)
   { return const_item() && !val_int(); }
-  bool is_predicate_selectivity_available(void *arg)
+  bool predicate_selectivity_checker(void *arg)
   {
     if (const_item() && !is_expensive())
      return false;

@@ -11362,17 +11362,18 @@ void Field::print_key_value_binary(String *out, const uchar* key, uint32 length)
 
 /*
   @brief
-    Check if statistics for a column are available via indexes
+    Check if statistics for a column are available via keys
 
   @details
-    If the column is the first component of an index, then statistics
-    for the column are available.
+    If the column is the first component of a key, then statistics
+    for the column are available from the range optimizer.
 
   @retval
-    TRUE     : statistics available from indexes
+    TRUE     : statistics available from keys
     FALSE    : otherwise
 */
-bool Field::is_statistics_available_via_indexes()
+
+bool Field::is_statistics_available_via_keys()
 {
   DBUG_ASSERT(table);
   uint key;
@@ -11393,8 +11394,8 @@ bool Field::is_statistics_available_via_indexes()
   @retval
     TRUE     : statistics available from EITS
     FALSE    : otherwise
-
 */
+
 bool Field::is_statistics_available_via_eits()
 {
   DBUG_ASSERT(table);
@@ -11414,12 +11415,12 @@ bool Field::is_statistics_available_via_eits()
   @retval
     TRUE    : statistics available
     FALSE   : otherwise
-
 */
+
 bool Field::is_statistics_available()
 {
   DBUG_ASSERT(table);
-  return is_statistics_available_via_indexes() ?
+  return is_statistics_available_via_keys() ?
          TRUE :
          is_statistics_available_via_eits();
 }
@@ -11463,7 +11464,7 @@ bool Field::is_eits_usable()
     (1): checks if we have EITS statistics for a particular column
     (2): Don't use EITS for GEOMETRY columns
     (3): Disabling reading EITS statistics for columns involved in the
-         partition list of a table. We assume the selecticivity for
+         partition list of a table. We assume the selectivity for
          such columns would be handled during partition pruning.
   */
 

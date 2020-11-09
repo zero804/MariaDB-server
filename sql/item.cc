@@ -9218,7 +9218,8 @@ Item_field::excl_dep_on_grouping_fields(st_select_lex *sel)
 
 
 /*
-  @brief Checks if a formula of a condition contains the same column
+  @brief
+    Checks if a formula of a condition contains the same column
 
   @details
     In the function we try to check if a formula of a condition depends
@@ -9239,19 +9240,19 @@ Item_field::excl_dep_on_grouping_fields(st_select_lex *sel)
   @retval
     TRUE   : the formula does not depend on one column
     FALSE  : OTHERWISE
-
 */
-bool Item_field::is_predicate_selectivity_available(void *arg)
+
+bool Item_field::predicate_selectivity_checker(void *arg)
 {
   SAME_FIELD *same_field_arg= (SAME_FIELD*)arg;
+
   /*
-    The same_field_arg is passed as a parameter because when we start walking over
-    the condition tree we don't know which column the predicate will be
-    dependent on, so for the first leaf of the condition tree where we find
-    the Item_field, we set the SAME_FIELD::field to the field of the item
-    and then compare the rest of the predicate with this field
-    (directly or indirectly) for the remaining of the conditional tree
-    traversal.
+    The same_field_arg is passed as a parameter because when we start walking
+    over the condition tree we don't know which column the predicate will be
+    dependent on. So as soon as we encounter a leaf of the condition tree
+    which is a field item, we set the SAME_FIELD::item to the found
+    field item and then compare the rest of the fields in the predicate with
+    the field item.
   */
 
   if (same_field_arg->item == NULL)

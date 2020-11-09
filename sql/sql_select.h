@@ -190,7 +190,10 @@ typedef struct st_table_ref
 */
 typedef struct same_field
 {
-  /* field item for which the entire predicate depends on */
+  /*
+    field item for the first encountered column while traversing
+    over the conditional predicate
+  */
   Item_field *item;
   /*
     TRUE : statistics available for the field via keys or EITS
@@ -2551,6 +2554,6 @@ void propagate_new_equalities(THD *thd, Item *cond,
                               List<Item_equal> *new_equalities,
                               COND_EQUAL *inherited,
                               bool *is_simplifiable_cond);
-bool is_sargable_predicate(Item *item, Item *value, void *arg);
+bool is_range_predicate(Item *item, Item *value);
 
 #endif /* SQL_SELECT_INCLUDED */

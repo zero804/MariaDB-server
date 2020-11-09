@@ -1907,7 +1907,7 @@ public:
   /* Mark field in read map. Updates also virtual fields */
   void register_field_in_read_map();
 
-  bool is_statistics_available_via_indexes();
+  bool is_statistics_available_via_keys();
   bool is_first_component_of_key(KEY *key);
   bool is_statistics_available_via_eits();
   bool is_statistics_available();
