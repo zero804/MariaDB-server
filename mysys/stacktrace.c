@@ -34,49 +34,6 @@
 #include <execinfo.h>
 #endif
 
-/*
-  Attempt to print a char * pointer as a string.
-
-  SYNOPSIS
-    Prints until  max_len characters have been printed.
-
-  RETURN VALUE
-    0  Pointer was within the heap address space.
-       The string was printed fully, or until the end of the heap address space.
-    1  Pointer is outside the heap address space. Printed as invalid.
-
-  NOTE
-    On some systems, we can have valid pointers outside the heap address space.
-    This is through the use of mmap inside malloc calls. When this function
-    returns 1, it does not mean 100% that the pointer is corrupted.
-*/
-
-int my_safe_print_str(const char* val, int max_len)
-{
-  const char *orig_val= val;
-  if (!val)
-  {
-    my_safe_printf_stderr("%s", "(null)");
-    return 1;
-  }
-
-  for (; max_len; --max_len)
-  {
-    if (my_write_stderr((val++), 1) != 1)
-    {
-      if ((errno == EFAULT) &&(val == orig_val + 1))
-      {
-        // We can not read the address from very beginning
-        my_safe_printf_stderr("Can't access address %p", orig_val);
-      }
-      break;
-    }
-  }
-  my_safe_printf_stderr("%s", "\n");
-
-  return 0;
-}
-
 #if defined(HAVE_PRINTSTACK)
 
 /* Use Solaris' symbolic stack trace routine. */
@@ -386,6 +343,49 @@ void my_write_core(int sig)
 #endif
 }
 
+
+/*
+  Attempt to print a char * pointer as a string.
+
+  SYNOPSIS
+    Prints until  max_len characters have been printed.
+
+  RETURN VALUE
+    0  Pointer was within the heap address space.
+       The string was printed fully, or until the end of the heap address space.
+    1  Pointer is outside the heap address space. Printed as invalid.
+
+  NOTE
+    On some systems, we can have valid pointers outside the heap address space.
+    This is through the use of mmap inside malloc calls. When this function
+    returns 1, it does not mean 100% that the pointer is corrupted.
+*/
+
+int my_safe_print_str(const char* val, int max_len)
+{
+  const char *orig_val= val;
+  if (!val)
+  {
+    my_safe_printf_stderr("%s", "(null)");
+    return 1;
+  }
+
+  for (; max_len; --max_len)
+  {
+    if (my_write_stderr((val++), 1) != 1)
+    {
+      if ((errno == EFAULT) &&(val == orig_val + 1))
+      {
+        // We can not read the address from very beginning
+        my_safe_printf_stderr("Can't access address %p", orig_val);
+      }
+      break;
+    }
+  }
+  my_safe_printf_stderr("%s", "\n");
+
+  return 0;
+}
 #else /* __WIN__*/
 
 #ifdef _MSC_VER
