@@ -1531,7 +1531,7 @@ bool TABLE_SHARE::fk_resolve_referenced_keys(THD *thd, TABLE_SHARE *from)
 {
   for (FK_info &fk: from->foreign_keys)
   {
-    if (cmp_table(fk.referenced_db, db) || cmp_table(fk.referenced_table, table_name))
+    if (::cmp_table(fk.referenced_db, db) || ::cmp_table(fk.referenced_table, table_name))
       continue;
     for (Lex_cstring &fld: fk.referenced_fields)
     {
