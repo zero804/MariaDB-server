@@ -4581,11 +4581,11 @@ bool
 btr_validate_level(
 /*===============*/
 	dict_index_t*	index,	/*!< in: index tree */
+	buf_block_t*	block,	/*!< in: root page */
 	const trx_t*	trx,	/*!< in: transaction or NULL */
 	ulint		level,	/*!< in: level number */
 	bool		lockout)/*!< in: true if X-latch index is intended */
 {
-	buf_block_t*	block;
 	page_t*		page;
 	buf_block_t*	right_block = 0; /* remove warning */
 	page_t*		right_page = 0; /* remove warning */
@@ -4610,16 +4610,6 @@ btr_validate_level(
 	bool		rightmost_child = false;
 
 	mtr.start();
-
-	if (!srv_read_only_mode) {
-		if (lockout) {
-			mtr_x_lock_index(index, &mtr);
-		} else {
-			mtr_sx_lock_index(index, &mtr);
-		}
-	}
-
-	block = btr_root_block_get(index, RW_SX_LATCH, &mtr);
 	page = buf_block_get_frame(block);
 
 	fil_space_t*		space	= index->table->space;
@@ -4687,13 +4677,6 @@ btr_validate_level(
 loop:
 	mem_heap_empty(heap);
 	offsets = offsets2 = NULL;
-	if (!srv_read_only_mode) {
-		if (lockout) {
-			mtr_x_lock_index(index, &mtr);
-		} else {
-			mtr_sx_lock_index(index, &mtr);
-		}
-	}
 
 #ifdef UNIV_ZIP_DEBUG
 	page_zip = buf_block_get_page_zip(block);
@@ -5049,19 +5032,19 @@ btr_validate_index(
 		}
 	}
 
-	page_t*	root = btr_root_get(index, &mtr);
+	buf_block_t* root = btr_root_block_get(index, RW_SX_LATCH, &mtr);
 
 	if (!root) {
 		mtr_commit(&mtr);
 		return DB_CORRUPTION;
 	}
 
-	ulint	n = btr_page_get_level(root);
+	ulint	n = btr_page_get_level(root->frame);
 
 	btr_validate_index_running++;
 	for (ulint i = 0; i <= n; ++i) {
 
-		if (!btr_validate_level(index, trx, n - i, lockout)) {
+		if (!btr_validate_level(index, root, trx, n - i, lockout)) {
 			err = DB_CORRUPTION;
 		}
 	}
