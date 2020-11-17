@@ -446,6 +446,26 @@ typedef struct replace_equal_field_arg
   struct st_join_table *context_tab;
 } REPLACE_EQUAL_FIELD_ARG;
 
+
+/*
+  Structure storing information for a field on which the entire predicate is
+  dependent on (directly or indirectly via equalities)
+*/
+typedef struct same_field
+{
+  /*
+    field item for the first encountered column while traversing
+    over the conditional predicate
+  */
+  Item *item;
+  /*
+    Set to true if the statistics for the field are available
+    directly (via keys or stat tables) or indirectly (via equalities)
+  */
+  bool is_stats_available;
+}SAME_FIELD;
+
+
 class Settable_routine_parameter
 {
 public:
@@ -1970,6 +1990,102 @@ public:
   virtual bool exists2in_processor(void *arg) { return 0; }
 
   virtual bool find_selective_predicates_list_processor(void *arg) { return 0; }
+  /*
+    @brief
+      Check if selectivity is accounted for all parts of the WHERE condition
+
+    @details
+
+      Lets take a generic example with OR-AND conjuncts WHERE clause is
+      defined as:
+
+        (COND1 AND COND2) OR (COND3 AND (COND4 OR COND5))
+
+       and each CONDx can be an OR-AND conjunct itself.
+
+       Lets try to see how different types of predicates are checked, whether
+       the estimates for selectivity of these predicates is accurate or not.
+
+      SIMPLE PREDICATE
+
+        Lets P be a predicate from the WHERE clause . If the predicate P is:
+
+        1) Multiple equality
+            For multiple equality to have accurate selectivity we need to make
+            sure that for each column in the multiple equality, the number of
+            distinct values is known.
+
+            Eg: t1.a= t2.a  is transformed to MULTIPLE_EQUAL(t1.a, t2.a)
+
+            For this case we need to make sure we know number of distinct
+            values for t1.a and t2.a
+
+        2) Sargable Predicate
+
+            The predicate would be of type col op const
+            where op can be  >/>=/</<=/=/<>
+            Also the other cases are with [NOT] IN predicate,
+            [NOT] NULL predicate and  LIKE predicate fall in the same category.
+
+            Only one non-constant argument and this argument a reference to a
+            column that is used either as the first component of an index with
+            known statistical data or a column for which a histogram is
+            provided
+
+           Eg
+            t1.a > 5 : get the estimate from the range optimizer (either with
+                       an index whose first component is t1.a or
+                       get the estimate from the histogram)
+        3) Remaining predicates
+           Don't have any way to know about the selectivity of these predicates
+           hence this would not give an accurate estimate of the join cardinality
+
+           Eg: t1.a > t2.a  (here none of t1.a and t2.a are constant)
+
+
+      AND predicate
+
+      For AND predicate the check for accurate estimates for selectivity depends
+      whether or not the AND predicate is at the top level.
+
+      1) Top level
+        For an AND predicate at the top level, we need to check if
+        accurate estimates are available for all the predicates
+        inside an AND predicate. If this is true then we have accurate estimates
+        for the selectivity for the AND predicate.
+
+          Eg: t1.a > 10 and t2.a < 5
+
+          if we have estimates for t1.a and t2.a via indexes or EITS, the
+          estimates for selectivity for this AND predicate is accurate
+
+      2) Non-top level
+        For all the predicates inside an AND predicate we need to have an accurate
+        estimate for selectivity and each predicate need to be resolved by one
+        column. If we are able to resolve the AND predicate to one column and
+        for this column estimates are available via indexes or EITS,
+        then the estimates for the AND predicate are accurate.
+            Eg: t1.a = t2.a AND ( (t1.a > 5 AND t2.a < 10) OR t1.a <= 0)
+
+
+      OR predicate
+
+      For an OR predicate, we need to make sure that the whole OR predicate can
+      be resolved by one column directly or indirectly
+      (that is via multiple equalities).
+      If this is possible then for the resolved column we need to have statistics
+      either from the first component of an index or via EITS.
+
+      Eg: t1.a=t2.b and (t2.b > 5 or t1.a < 0);
+
+      In the end for all fields we may have selectivity from an index or
+      from EITS.
+
+    @retval
+      TRUE         join cardinality estimate is accurate
+      FALSE        join cardinality estimate is not accurate
+  */
+  bool all_selectivity_accounted_for_join_cardinality();
 
   /*
     @brief
@@ -5962,6 +6078,7 @@ public:
   Item *field_transformer_for_having_pushdown(THD *thd, uchar *arg)
   { return this; }
   Item *remove_item_direct_ref() { return this; }
+  bool predicate_selectivity_checker(void *arg);
 };
 
 

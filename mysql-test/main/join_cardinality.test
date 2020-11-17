@@ -34,8 +34,8 @@ ANALYZE TABLE t2 PERSISTENT FOR ALL;
 --enable_result_log
 
 --echo #
---echo # RUNNING the join cardinality tests when only EITS statistics
---echo # are available
+--echo # RUNNING the join cardinality tests when only statistics
+--echo # are available from stat tables
 --echo #
 
 --source include/join_cardinality.inc
@@ -44,7 +44,8 @@ DROP TABLE t1,t2;
 
 
 --echo #
---echo # Combination with EITS and statistics from indexes
+--echo # Combination with statistics from stat tables and
+--echo # statistics from indexes
 --echo #
 
 CREATE TABLE t1(a INT, b INT, KEY(a));
@@ -169,7 +170,7 @@ FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 DROP TABLE t1;
 
 --echo #
---echo # Tests when updating EITS manually
+--echo # Tests when updating stats tables manually
 --echo #
 
 CREATE TABLE t1(a INT, b INT);
@@ -179,7 +180,7 @@ INSERT INTO
 mysql.column_stats(db_name, table_name, column_name, nulls_ratio) VALUES ('test', 't1', 'a', 0);
 
 --echo #
---echo # estimates from EITS not available, all the fields should be NOT NULL
+--echo # estimates from stat tables not available, all the fields should be NOT NULL
 --echo #
 
 EXPLAIN SELECT * from t1 WHERE a < 10;
@@ -187,5 +188,38 @@ SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
 DROP TABLE t1;
+
+--echo #
+--echo # Using multiple equalities at the top level
+--echo #
+
+CREATE TABLE t1(a INT, b INT);
+INSERT INTO t1 SELECT seq, seq from seq_1_to_10;
+CREATE TABLE t2(a INT, b INT);
+INSERT INTO t2 SELECT seq, seq from seq_1_to_10;
+
+ANALYZE TABLE t1 PERSISTENT FOR ALL;
+ANALYZE TABLE t2 PERSISTENT FOR ALL;
+
+EXPLAIN
+SELECT * FROM t1,t2 WHERE t1.a= t2.a AND t1.b= t2.b;
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+
+EXPLAIN
+SELECT * FROM t1,t2 WHERE t1.a= t2.a AND t1.b= t2.b;
+
+--echo #
+--echo # Tests with views (using Item_direct_view_ref)
+--echo #
+
+CREATE VIEW v1 AS SELECT a, b  FROM t1;
+
+EXPLAIN SELECT * FROM v1,t1 where v1.b = 10 AND v1.b=t1.b;
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+
+DROP TABLE t1,t2;
+DROP VIEW v1;
 
 SET optimizer_switch=@save_optimizer_switch;

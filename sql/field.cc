@@ -1853,6 +1853,7 @@ Field::Field(uchar *ptr_arg,uint32 length_arg,uchar *null_ptr_arg,
   field_index= 0;
   cond_selectivity= 1.0;
   next_equal_field= NULL;
+  stats_available= 0;
 }
 
 
@@ -11381,9 +11382,13 @@ bool Field::is_statistics_available_via_keys()
   while ((key= it++) != key_map::Iterator::BITMAP_END)
   {
     if (is_first_component_of_key(table->key_info + key))
+    {
+      stats_available|=  (1 << STATISTICS_AVAILABLE);
       return true;
+    }
   }
-    return false;
+  stats_available|= (1 << STATISTICS_NOT_AVAILABLE);
+  return false;
 }
 
 
@@ -11400,7 +11405,11 @@ bool Field::is_statistics_available_via_eits()
 {
   DBUG_ASSERT(table);
   if (!(table->stats_is_read && is_eits_usable()))
+  {
+    stats_available|= (1 << STATISTICS_NOT_AVAILABLE);
     return false;
+  }
+  stats_available|=  (1 << STATISTICS_AVAILABLE);
   return true;
 }
 
@@ -11420,6 +11429,9 @@ bool Field::is_statistics_available_via_eits()
 bool Field::is_statistics_available()
 {
   DBUG_ASSERT(table);
+  if (stats_available)
+    return (stats_available & (1 << STATISTICS_AVAILABLE)) ? true : false;
+
   return is_statistics_available_via_keys() ?
          TRUE :
          is_statistics_available_via_eits();

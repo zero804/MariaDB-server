@@ -869,6 +869,14 @@ public:
   */
   Column_statistics_collected *collected_stats;
 
+  enum stats_availability
+  {
+    STATISTICS_AVAILABLE=0,
+    STATISTICS_NOT_AVAILABLE
+  };
+
+  uint stats_available;
+
   /* 
     This is additional data provided for any computed(virtual) field,
     default function or check constraint.

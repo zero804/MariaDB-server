@@ -270,8 +270,8 @@ INSERT INTO t1 SELECT seq, seq, seq from seq_1_to_100;
 CREATE TABLE t2(a INT, b INT);
 INSERT INTO t2 SELECT seq, seq from seq_1_to_100;
 #
-# RUNNING the join cardinality tests when only EITS statistics
-# are available
+# RUNNING the join cardinality tests when only statistics
+# are available from stat tables
 #
 #
 # BASIC CASES
@@ -530,7 +530,8 @@ JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
 ]
 DROP TABLE t1,t2;
 #
-# Combination with EITS and statistics from indexes
+# Combination with statistics from stat tables and
+# statistics from indexes
 #
 CREATE TABLE t1(a INT, b INT, KEY(a));
 INSERT INTO t1 SELECT seq, seq from seq_1_to_100;
@@ -752,14 +753,14 @@ JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
 ]
 DROP TABLE t1;
 #
-# Tests when updating EITS manually
+# Tests when updating stats tables manually
 #
 CREATE TABLE t1(a INT, b INT);
 INSERT INTO t1 SELECT seq, seq from seq_1_to_100;
 INSERT INTO
 mysql.column_stats(db_name, table_name, column_name, nulls_ratio) VALUES ('test', 't1', 'a', 0);
 #
-# estimates from EITS not available, all the fields should be NOT NULL
+# estimates from stat tables not available, all the fields should be NOT NULL
 #
 EXPLAIN SELECT * from t1 WHERE a < 10;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
@@ -771,4 +772,51 @@ JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
     false
 ]
 DROP TABLE t1;
+#
+# Using multiple equalities at the top level
+#
+CREATE TABLE t1(a INT, b INT);
+INSERT INTO t1 SELECT seq, seq from seq_1_to_10;
+CREATE TABLE t2(a INT, b INT);
+INSERT INTO t2 SELECT seq, seq from seq_1_to_10;
+ANALYZE TABLE t1 PERSISTENT FOR ALL;
+Table	Op	Msg_type	Msg_text
+test.t1	analyze	status	Engine-independent statistics collected
+test.t1	analyze	status	OK
+ANALYZE TABLE t2 PERSISTENT FOR ALL;
+Table	Op	Msg_type	Msg_text
+test.t2	analyze	status	Engine-independent statistics collected
+test.t2	analyze	status	OK
+EXPLAIN
+SELECT * FROM t1,t2 WHERE t1.a= t2.a AND t1.b= t2.b;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	10	
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	10	Using where; Using join buffer (flat, BNL join)
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+[
+    true
+]
+EXPLAIN
+SELECT * FROM t1,t2 WHERE t1.a= t2.a AND t1.b= t2.b;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	10	
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	10	Using where; Using join buffer (flat, BNL join)
+#
+# Tests with views (using Item_direct_view_ref)
+#
+CREATE VIEW v1 AS SELECT a, b  FROM t1;
+EXPLAIN SELECT * FROM v1,t1 where v1.b = 10 AND v1.b=t1.b;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	10	Using where
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	10	Using where; Using join buffer (flat, BNL join)
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+[
+    true
+]
+DROP TABLE t1,t2;
+DROP VIEW v1;
 SET optimizer_switch=@save_optimizer_switch;

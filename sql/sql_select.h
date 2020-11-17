@@ -185,26 +185,6 @@ typedef struct st_table_ref
 
 
 /*
-  Structure storing information for a field on which the entire predicate is
-  dependent on (directly or indirectly via equalities)
-*/
-typedef struct same_field
-{
-  /*
-    field item for the first encountered column while traversing
-    over the conditional predicate
-  */
-  Item_field *item;
-  /*
-    TRUE : statistics available for the field via keys or EITS
-    FALSE: otherwise
-
-    @see Item_field::is_predicate_selectivity_covered
-  */
-  bool is_statistics_available;
-}SAME_FIELD;
-
-/*
   The structs which holds the join connections and join states
 */
 enum join_type { JT_UNKNOWN,JT_SYSTEM,JT_CONST,JT_EQ_REF,JT_REF,JT_MAYBE_REF,
@@ -1813,9 +1793,6 @@ public:
   void make_notnull_conds_for_range_scans();
 
   bool transform_in_predicates_into_in_subq(THD *thd);
-
-  bool all_selectivity_accounted_for_join_cardinality();
-
 private:
   /**
     Create a temporary table to be used for processing DISTINCT/ORDER

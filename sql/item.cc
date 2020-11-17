@@ -7491,6 +7491,27 @@ Item *Item::build_pushable_cond(THD *thd,
 }
 
 
+
+bool Item::all_selectivity_accounted_for_join_cardinality()
+{
+  if (type() == Item::COND_ITEM &&
+      ((Item_cond*) this)->functype() == Item_func::COND_AND_FUNC)
+  {
+    List_iterator<Item> li(*((Item_cond*) this)->argument_list());
+    Item *item;
+    while ((item= li++))
+    {
+      SAME_FIELD arg= {NULL, false};
+      if (item->walk(&Item::predicate_selectivity_checker, 0, &arg))
+        return false;
+    }
+    return true;
+  }
+  SAME_FIELD arg= {NULL, false};
+  return !walk(&Item::predicate_selectivity_checker, 0, &arg);
+}
+
+
 static
 Item *get_field_item_for_having(THD *thd, Item *item, st_select_lex *sel)
 {
@@ -9258,18 +9279,35 @@ bool Item_field::predicate_selectivity_checker(void *arg)
   if (same_field_arg->item == NULL)
   {
     same_field_arg->item= this;
-    same_field_arg->is_statistics_available= field->is_statistics_available();
+    same_field_arg->is_stats_available=
+                         field->is_statistics_available() ||
+                         (item_equal && item_equal->is_statistics_available());
     return false;
   }
 
   /* Found the same field while traversing the condition tree */
-  if (same_field_arg->item->field == field)
+  DBUG_ASSERT(same_field_arg->item->real_item()->type() == Item::FIELD_ITEM);
+  if (((Item_field*)same_field_arg->item->real_item())->field == field)
     return false;
 
-  if (!same_field_arg->item->item_equal)
+  if (!same_field_arg->item->get_item_equal())
     return true;
 
-  return !(same_field_arg->item->item_equal == item_equal);
+  return !(same_field_arg->item->get_item_equal() == item_equal);
+}
+
+
+bool Item_direct_view_ref::predicate_selectivity_checker(void *arg)
+{
+  SAME_FIELD *same_field_arg= (SAME_FIELD*)arg;
+  if (same_field_arg->item == (*ref))
+  {
+    DBUG_ASSERT((*ref)->type() == Item::FIELD_ITEM);
+    same_field_arg->item= this;
+    same_field_arg->is_stats_available|=
+                     (item_equal && item_equal->is_statistics_available());
+  }
+  return false;
 }
 
 

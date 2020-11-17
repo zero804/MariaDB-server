@@ -2109,7 +2109,7 @@ bool Item_func_between::count_sargable_conds(void *arg)
 bool Item_func_between::predicate_selectivity_checker(void *arg)
 {
   SAME_FIELD *field_arg= (SAME_FIELD*)arg;
-  if (!field_arg->is_statistics_available)
+  if (!field_arg->is_stats_available)
     return true;
 
   if (arguments()[0]->real_item()->type() == Item::FIELD_ITEM)
@@ -4318,7 +4318,7 @@ bool Item_func_in::count_sargable_conds(void *arg)
 bool Item_func_in::predicate_selectivity_checker(void *arg)
 {
   SAME_FIELD *field_arg= (SAME_FIELD*)arg;
-  if (!field_arg->is_statistics_available)
+  if (!field_arg->is_stats_available)
     return true;
   all_items_are_consts(args + 1, arg_count - 1);
   return false;
@@ -5554,7 +5554,7 @@ bool Item_func_null_predicate::count_sargable_conds(void *arg)
 bool Item_func_null_predicate::predicate_selectivity_checker(void *arg)
 {
   SAME_FIELD *field_arg= (SAME_FIELD*)arg;
-  if (!field_arg->is_statistics_available)
+  if (!field_arg->is_stats_available)
     return true;
 
   if (is_range_predicate(args[0], NULL))
@@ -5648,7 +5648,7 @@ bool Item_bool_func2::count_sargable_conds(void *arg)
 bool Item_bool_func2::predicate_selectivity_checker(void *arg)
 {
   SAME_FIELD *field_arg= (SAME_FIELD*)arg;
-  if (!field_arg->is_statistics_available)
+  if (!field_arg->is_stats_available)
     return true;
 
   if (is_range_predicate(args[0], args[1]) ||
@@ -5765,15 +5765,11 @@ SEL_TREE *Item_func_like::get_mm_tree(RANGE_OPT_PARAM *param, Item **cond_ptr)
 bool Item_func_like::predicate_selectivity_checker(void *arg)
 {
   SAME_FIELD *field_arg= (SAME_FIELD*)arg;
-  if (!field_arg->is_statistics_available)
+  if (!field_arg->is_stats_available)
     return true;
 
   if (with_sargable_pattern())
-  {
-    if (is_range_predicate(args[0], args[1]) ||
-        is_range_predicate(args[1], args[0]))
       return false;
-  }
   return true;
 }
 
@@ -7231,6 +7227,20 @@ bool Item_equal::predicate_selectivity_checker(void *arg)
       return true;
   }
   return false;
+}
+
+
+bool Item_equal::is_statistics_available()
+{
+  bool found= false;
+  Item_equal_fields_iterator it(*this);
+  while (it++)
+  {
+    Field *field= it.get_curr_field();
+    if (field->is_statistics_available())
+      found= true;
+  }
+  return found;
 }
 
 
