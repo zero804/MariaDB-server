@@ -6,7 +6,7 @@ OPTIMIZER_TRACE	MISSING_BYTES_BEYOND_MAX_MEM_SIZE
 OPTIMIZER_TRACE	INSUFFICIENT_PRIVILEGES
 show variables like 'optimizer_trace';
 Variable_name	Value
-optimizer_trace	enabled=on
+optimizer_trace	enabled=off
 set optimizer_trace="enabled=on";
 show variables like 'optimizer_trace';
 Variable_name	Value

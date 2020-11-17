@@ -2085,7 +2085,7 @@ public:
       TRUE         join cardinality estimate is accurate
       FALSE        join cardinality estimate is not accurate
   */
-  bool all_selectivity_accounted_for_join_cardinality();
+  bool with_accurate_selectivity_estimation();
 
   /*
     @brief

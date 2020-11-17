@@ -4022,6 +4022,8 @@ enum open_frm_error open_table_from_share(THD *thd, TABLE_SHARE *share,
   /* Setup copy of fields from share, but use the right alias and record */
   for (i=0 ; i < share->fields; i++, field_ptr++)
   {
+    share->field[i]->is_statistics_available_via_keys(share->key_info);
+    share->field[i]->is_ndv_available_via_keys(share->key_info);
     if (!((*field_ptr)= share->field[i]->clone(&outparam->mem_root, outparam)))
       goto err;
   }

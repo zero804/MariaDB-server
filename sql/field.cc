@@ -11374,41 +11374,36 @@ void Field::print_key_value_binary(String *out, const uchar* key, uint32 length)
     FALSE    : otherwise
 */
 
-bool Field::is_statistics_available_via_keys()
+bool Field::is_statistics_available_via_keys(KEY *key_info)
 {
-  DBUG_ASSERT(table);
   uint key;
   key_map::Iterator it(part_of_key);
   while ((key= it++) != key_map::Iterator::BITMAP_END)
   {
-    if (is_first_component_of_key(table->key_info + key))
+    KEY *keyinfo= key_info + key;
+    if (is_first_component_of_key(keyinfo))
     {
       stats_available|=  (1 << STATISTICS_AVAILABLE);
       return true;
     }
   }
-  stats_available|= (1 << STATISTICS_NOT_AVAILABLE);
   return false;
 }
 
 
 /*
   @brief
-    Check if statistics for a column are available via EITS
+    Check if statistics for a column are available via stat tables
 
   @retval
-    TRUE     : statistics available from EITS
+    TRUE     : statistics available from stat tables
     FALSE    : otherwise
 */
 
-bool Field::is_statistics_available_via_eits()
+bool Field::is_statistics_available_via_stat_tables()
 {
-  DBUG_ASSERT(table);
-  if (!(table->stats_is_read && is_eits_usable()))
-  {
-    stats_available|= (1 << STATISTICS_NOT_AVAILABLE);
+  if (!(read_stats && !read_stats->no_stat_values_provided()))
     return false;
-  }
   stats_available|=  (1 << STATISTICS_AVAILABLE);
   return true;
 }
@@ -11416,25 +11411,68 @@ bool Field::is_statistics_available_via_eits()
 
 /*
   @brief
-    Check if statistics for a field is available or not
+    Cache if statistics are avaialble for a field or not
 
   @details
-    Check if statistics for a field is available via indexes or EITS
+    Check if statistics for a field is available via indexes or stat tables
+    and cache this value in Field::stats_available.
 
   @retval
     TRUE    : statistics available
     FALSE   : otherwise
 */
 
+void Field::cache_if_statistics_are_available(KEY *keyinfo)
+{
+  is_statistics_available_via_keys(keyinfo);
+  is_statistics_available_via_stat_tables();
+}
+
+
 bool Field::is_statistics_available()
 {
-  DBUG_ASSERT(table);
-  if (stats_available)
-    return (stats_available & (1 << STATISTICS_AVAILABLE)) ? true : false;
+  return (stats_available & (1 << STATISTICS_AVAILABLE)) ? true : false;
+}
 
-  return is_statistics_available_via_keys() ?
-         TRUE :
-         is_statistics_available_via_eits();
+
+bool Field::is_ndv_available()
+{
+  return (stats_available & (1 << NDV_AVAILABLE)) ? true : false;
+}
+
+
+void Field::cache_if_ndv_is_available(KEY *keyinfo)
+{
+  is_ndv_available_via_keys(keyinfo);
+  is_ndv_available_via_stat_tables();
+}
+
+
+bool Field::is_ndv_available_via_keys(KEY *key_info)
+{
+  uint key;
+  key_map::Iterator it(part_of_key);
+  while ((key= it++) != key_map::Iterator::BITMAP_END)
+  {
+    KEY *keyinfo= key_info + key;
+    if (is_first_component_of_key(keyinfo)) //&& keyinfo->actual_rec_per_key(0))
+    {
+      stats_available|=  (1 << NDV_AVAILABLE);
+      return true;
+    }
+  }
+  return false;
+
+}
+
+
+bool Field::is_ndv_available_via_stat_tables()
+{
+  if (!(read_stats && !read_stats->no_stat_values_provided() &&
+        !read_stats->is_null(COLUMN_STAT_AVG_FREQUENCY)))
+    return false;
+  stats_available|= (1 << NDV_AVAILABLE);
+  return true;
 }
 
 

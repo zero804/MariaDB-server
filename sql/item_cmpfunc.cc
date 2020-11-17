@@ -7223,7 +7223,7 @@ bool Item_equal::predicate_selectivity_checker(void *arg)
   while (it++)
   {
     Field *field= it.get_curr_field();
-    if (!field->is_statistics_available())
+    if (!field->is_ndv_available())
       return true;
   }
   return false;

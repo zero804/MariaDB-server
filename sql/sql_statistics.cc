@@ -2932,6 +2932,8 @@ int read_statistics_for_table(THD *thd, TABLE *table, TABLE_LIST *stat_tables)
     table_field= *field_ptr;
     column_stat.set_key_fields(table_field);
     column_stat.get_stat_values();
+    table_field->is_statistics_available_via_stat_tables();
+    table_field->is_ndv_available_via_stat_tables();
     total_hist_size+= table_field->read_stats->histogram.get_size();
   }
   table_share->stats_cb.total_hist_size= total_hist_size;
@@ -3158,7 +3160,10 @@ static void dump_stats_from_share_to_table(TABLE *table)
   Field **field_ptr= table_share->field;
   Field **table_field_ptr= table->field;
   for ( ; *field_ptr; field_ptr++, table_field_ptr++)
+  {
     (*table_field_ptr)->read_stats= (*field_ptr)->read_stats;
+    (*table_field_ptr)->stats_available= (*field_ptr)->stats_available;
+  }
   table->stats_is_read= true;
 }
 

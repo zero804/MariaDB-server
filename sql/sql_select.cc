@@ -8299,7 +8299,7 @@ choose_plan(JOIN *join, table_map join_tables)
 
   if (join->conds)
     wrapper.add("cardinality_accurate",
-                join->conds->all_selectivity_accounted_for_join_cardinality());
+                join->conds->with_accurate_selectivity_estimation());
 
   Json_writer_array trace_plan(thd,"considered_execution_plans");
 

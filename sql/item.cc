@@ -7492,7 +7492,7 @@ Item *Item::build_pushable_cond(THD *thd,
 
 
 
-bool Item::all_selectivity_accounted_for_join_cardinality()
+bool Item::with_accurate_selectivity_estimation()
 {
   if (type() == Item::COND_ITEM &&
       ((Item_cond*) this)->functype() == Item_func::COND_AND_FUNC)
@@ -9280,8 +9280,8 @@ bool Item_field::predicate_selectivity_checker(void *arg)
   {
     same_field_arg->item= this;
     same_field_arg->is_stats_available=
-                         field->is_statistics_available() ||
-                         (item_equal && item_equal->is_statistics_available());
+                     field->is_statistics_available() ||
+                     (item_equal && item_equal->is_statistics_available());
     return false;
   }
 
@@ -9300,9 +9300,9 @@ bool Item_field::predicate_selectivity_checker(void *arg)
 bool Item_direct_view_ref::predicate_selectivity_checker(void *arg)
 {
   SAME_FIELD *same_field_arg= (SAME_FIELD*)arg;
-  if (same_field_arg->item == (*ref))
+  if (same_field_arg->item == real_item())
   {
-    DBUG_ASSERT((*ref)->type() == Item::FIELD_ITEM);
+    DBUG_ASSERT(real_item()->type() == Item::FIELD_ITEM);
     same_field_arg->item= this;
     same_field_arg->is_stats_available|=
                      (item_equal && item_equal->is_statistics_available());
