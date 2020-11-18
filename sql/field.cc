@@ -11419,6 +11419,15 @@ bool Field::is_ndv_available(KEY *key)
 }
 
 
+/*
+  @brief
+    Check if number of distinct values(ndv) for a column are available via keys
+
+  @retval
+    TRUE     : ndv available from keys
+    FALSE    : otherwise
+*/
+
 bool Field::is_ndv_available_via_keys(KEY *key_info)
 {
   uint key;
@@ -11436,6 +11445,15 @@ bool Field::is_ndv_available_via_keys(KEY *key_info)
 
 }
 
+
+/*
+  @brief
+    Check if ndv for a column are available via statistical tables
+
+  @retval
+    TRUE     : ndv available from statistical tables
+    FALSE    : otherwise
+*/
 
 bool Field::is_ndv_available_via_stat_tables()
 {

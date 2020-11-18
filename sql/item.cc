@@ -7491,6 +7491,93 @@ Item *Item::build_pushable_cond(THD *thd,
 }
 
 
+/*
+  @brief
+    Check if selectivity estimates are accurate for a conditional formula
+
+  @details
+    This function checks whether this item belongs to a certain class of
+    condition for which we can calculate an accurate selectivity estimate.
+
+    The definition of the class of condition is recursive.
+    1. (base of recursive definition)
+         a. Formula in the form of range predicates:
+
+            The predicate would be of type:
+               col op const
+              where op can be  >/>=/</<=/=/<>
+              Also the other cases are with [NOT] IN predicate,
+              [NOT] NULL predicate and  LIKE predicate fall in the same category.
+            The predicate should have only one non-constant argument and
+            this argument will be a reference to a column that is used either
+            as the first component of an index or statistics are available via
+            statistical tables.
+
+         b. Equalities:
+              For an equality to have accurate selectivity estimates,
+              the number of distinct values for each column in the equality
+              needs to be known.
+              Eg: t1.a= t2.a  is transformed to MULTIPLE_EQUAL(t1.a, t2.a)
+              For this case we need to make sure we know number of distinct
+              values for t1.a and t2.a
+
+              The number of distinct values for a column can be known by
+                1) from indexes via rec_per_key
+                2) from statistical tables via avg_frequency.
+
+      2. (recursive step)
+        AND / OR formula over formulas defined in section 1 of the
+        definition.
+
+        a) AND Formula
+         For AND formula the check for accurate selectivity estimates depends
+         whether or not the AND formula is at the top level.
+
+          i) Top level
+            For an AND formula at the top level, we need to check if
+            accurate estimates are available for all the predicates
+            inside an AND formula.
+            If this is true then accurate selectivity estimates are available
+            for the AND formula.
+
+              Eg: t1.a > 10 and t2.a < 5
+
+              if we have accurate selectivity estimates
+              for t1.a > 10 and t2.a < 5 via indexes or statistical tables,
+              then selectivity estimates for this AND formula are accurate
+
+          ii) Non-top level
+            For all the predicates inside an AND formula
+            accurate selectivity estimates are needed
+            and each predicate need to be resolved by one
+            column (table column). If this scenario is satisfied then
+            accurate selectivity estimates is available for the AND formula.
+              Eg: t1.a = t2.a AND ( (t1.a > 5 AND t2.a < 10) OR t1.a <= 0)
+
+      b) OR Formula
+
+          For an OR predicate, we need to make sure that the
+          whole OR predicate can be resolved by one column
+          directly or indirectly (that is via multiple equalities).
+          If this is possible then for the resolved column we need to have
+          statistics either from the first component of an index or
+          via statistical tables.
+
+          Eg: t1.a=t2.b and (t2.b > 5 or t1.a < 0);
+
+          In the end for all fields we may have selectivity from an index or
+          statistical tables.
+
+  @notes
+    The implementation for this function use the 'walk' method to traverse
+    the tree of this item with predicate_selectivity_checker() as the
+    call-back parameter of the method.
+
+
+  @retval
+    TRUE         selectivity estimates are accurate
+    FALSE        OTHERWISE
+*/
 
 bool Item::with_accurate_selectivity_estimation()
 {
