@@ -3935,7 +3935,7 @@ explain delete t0,t1 from t0, t1 where t0.a=t1.a and t1.a<3	{
             ]
           },
           {
-            "cardinality_accurate": true,
+            "cardinality_accurate": false,
             "considered_execution_plans": [
               {
                 "plan_prefix": [],

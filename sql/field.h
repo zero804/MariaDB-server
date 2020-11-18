@@ -1918,13 +1918,11 @@ public:
   /* Mark field in read map. Updates also virtual fields */
   void register_field_in_read_map();
 
-  bool is_statistics_available_via_keys(KEY *key);
+  bool is_statistics_available_via_keys();
   bool is_first_component_of_key(KEY *key);
   bool is_statistics_available_via_stat_tables();
-  void cache_if_statistics_are_available(KEY *key);
   bool is_statistics_available();
-  void cache_if_ndv_is_available(KEY *key);
-  bool is_ndv_available();
+  bool is_ndv_available(KEY *key);
   bool is_ndv_available_via_stat_tables();
   bool is_ndv_available_via_keys(KEY *key);
   bool is_eits_usable();

@@ -1995,7 +1995,7 @@ public:
       Check if selectivity is accounted for all parts of the WHERE condition
 
     @details
-
+      TODO varun: fix comments
       Lets take a generic example with OR-AND conjuncts WHERE clause is
       defined as:
 
