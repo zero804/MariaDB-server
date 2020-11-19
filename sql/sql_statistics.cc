@@ -2932,8 +2932,6 @@ int read_statistics_for_table(THD *thd, TABLE *table, TABLE_LIST *stat_tables)
     table_field= *field_ptr;
     column_stat.set_key_fields(table_field);
     column_stat.get_stat_values();
-    table_field->is_statistics_available_via_stat_tables();
-    table_field->is_ndv_available_via_stat_tables();
     total_hist_size+= table_field->read_stats->histogram.get_size();
   }
   table_share->stats_cb.total_hist_size= total_hist_size;

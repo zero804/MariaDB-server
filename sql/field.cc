@@ -11368,54 +11368,88 @@ void Field::print_key_value_binary(String *out, const uchar* key, uint32 length)
   @details
     If the column is the first component of a key, then statistics
     for the column are available from the range optimizer.
-
-  @retval
-    TRUE     : statistics available from keys
-    FALSE    : otherwise
+    Sets the bit in Field::stats_table
+      a) NDV is available
+      b) Statistics are available for the non-const argument of a
+         range predicate
 */
 
-bool Field::is_statistics_available_via_keys()
+void Field::statistics_available_via_keys()
 {
-  if (!key_start.is_clear_all())
+  uint key;
+  key_map::Iterator it(key_start);
+  while ((key= it++) != key_map::Iterator::BITMAP_END)
   {
-    stats_available|=  (1 << STATISTICS_AVAILABLE);
-    return true;
+    KEY *keyinfo= table->key_info + key;
+    if (keyinfo->usable_key_parts == 1 &&
+        field_index + 1 == keyinfo->key_part->fieldnr)
+    {
+      stats_available|= (1 << STATISTICS_FOR_RANGE_PREDICATES_AVAILABLE);
+      if (keyinfo->actual_rec_per_key(0))
+      {
+        stats_available|= (1 << STATISTICS_FOR_NDV_AVAILABLE);
+        return;
+      }
+    }
   }
-  return false;
 }
 
 
 /*
   @brief
     Check if statistics for a column are available via stat tables
-
-  @retval
-    TRUE     : statistics available from stat tables
-    FALSE    : otherwise
 */
 
-bool Field::is_statistics_available_via_stat_tables()
+void Field::statistics_available_via_stat_tables()
 {
   if (!(read_stats && !read_stats->no_stat_values_provided()))
-    return false;
-  stats_available|=  (1 << STATISTICS_AVAILABLE);
-  return true;
+    return;
+  stats_available|= (1 << STATISTICS_FOR_RANGE_PREDICATES_AVAILABLE);
+  if (!read_stats->is_null(COLUMN_STAT_AVG_FREQUENCY))
+    stats_available|= (1 << STATISTICS_FOR_NDV_AVAILABLE);
 }
 
+
+/*
+  @brief
+    Check if statistics for a column are available via indexes or stat tables
+
+  @retval
+    TRUE   : statistics available for the column
+    FALSE  : OTHERWISE
+*/
 
 bool Field::is_statistics_available()
 {
-  bool res= is_statistics_available_via_keys() ||
-            is_statistics_available_via_stat_tables();
-  return res;
+  if (!(stats_available & (1 << STATISTICS_CACHED)))
+  {
+    statistics_available_via_keys();
+    statistics_available_via_stat_tables();
+    stats_available|= (1 << STATISTICS_CACHED);
+  }
+
+  return (stats_available & (1 << STATISTICS_FOR_RANGE_PREDICATES_AVAILABLE));
 }
 
+/*
+  @brief
+    Check if ndv for a column are available via indexes or stat tables
 
-bool Field::is_ndv_available(KEY *key)
+  @retval
+    TRUE   : ndv available for the column
+    FALSE  : OTHERWISE
+*/
+
+bool Field::is_ndv_available()
 {
-  bool res= is_ndv_available_via_keys(key) ||
-            is_ndv_available_via_stat_tables();
-  return res;
+  if (!(stats_available & (1 << STATISTICS_CACHED)))
+  {
+    bool res= is_ndv_available_via_keys() ||
+              is_ndv_available_via_stat_tables();
+    stats_available|= (1 << STATISTICS_CACHED);
+    return res;
+  }
+  return (stats_available & (1 << STATISTICS_FOR_NDV_AVAILABLE));
 }
 
 
@@ -11428,21 +11462,20 @@ bool Field::is_ndv_available(KEY *key)
     FALSE    : otherwise
 */
 
-bool Field::is_ndv_available_via_keys(KEY *key_info)
+bool Field::is_ndv_available_via_keys()
 {
   uint key;
-  key_map::Iterator it(part_of_key);
+  key_map::Iterator it(key_start);
   while ((key= it++) != key_map::Iterator::BITMAP_END)
   {
-    KEY *keyinfo= key_info + key;
+    KEY *keyinfo= table->key_info + key;
     if (is_first_component_of_key(keyinfo) && keyinfo->actual_rec_per_key(0))
     {
-      stats_available|=  (1 << NDV_AVAILABLE);
+      stats_available|= (1 << STATISTICS_FOR_NDV_AVAILABLE);
       return true;
     }
   }
   return false;
-
 }
 
 
@@ -11460,7 +11493,7 @@ bool Field::is_ndv_available_via_stat_tables()
   if (!(read_stats && !read_stats->no_stat_values_provided() &&
         !read_stats->is_null(COLUMN_STAT_AVG_FREQUENCY)))
     return false;
-  stats_available|= (1 << NDV_AVAILABLE);
+  stats_available|= (1 << STATISTICS_FOR_NDV_AVAILABLE);
   return true;
 }
 
@@ -11480,7 +11513,7 @@ bool Field::is_ndv_available_via_stat_tables()
 bool Field::is_first_component_of_key(KEY *key)
 {
   DBUG_ASSERT(key->usable_key_parts >= 1);
-  return eq(key->key_part->field);
+  return field_index + 1 == key->key_part->fieldnr;
 }
 
 

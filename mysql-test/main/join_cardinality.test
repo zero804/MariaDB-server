@@ -222,4 +222,45 @@ FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 DROP TABLE t1,t2;
 DROP VIEW v1;
 
+
+--echo #
+--echo # TESTS to get ndv from rec_per_key 
+--echo #
+
+CREATE TABLE t1 (a INT, b INT);
+INSERT INTO t1 SELECT seq, seq FROM seq_1_to_10;
+ALTER TABLE t1 ADD KEY k1(a);
+
+set @save_use_stat_tables= @@use_stat_tables;
+set use_stat_tables='never';
+analyze table t1;
+
+CREATE TABLE t2 like t1;
+INSERT INTO t2 SELECT * FROM t1;
+ANALYZE TABLE t2 PERSISTENT FOR ALL;
+EXPLAIN SELECT * FROM t1, t2 where t1.a=t2.a and t2.a<3;
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+set use_stat_tables=@save_use_stat_tables;
+
+DROP TABLE t1,t2;
+
+--echo #
+--echo # Tests with multi-component keys
+--echo #
+
+CREATE TABLE t1 (a INT, b INT, KEY(a,b));
+INSERT INTO t1 SELECT seq, seq FROM seq_1_to_10;
+
+EXPLAIN SELECT * FROM t1 where t1.a<3 AND t1.b < 10;
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+
+ALTER TABLE t1 ADD KEY k1(a);
+EXPLAIN SELECT * FROM t1 where t1.a<3;
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+
+DROP TABLE t1;
+
 SET optimizer_switch=@save_optimizer_switch;
