@@ -5522,9 +5522,9 @@ btr_cur_optimistic_delete_func(
 			if (index->is_instant()) {
 				/* MDEV-17383: free metadata BLOBs! */
 				index->clear_instant_alter();
+				index->table->remove_bulk_trx();
 			}
 
-			index->table->remove_bulk_trx();
 			page_cur_set_after_last(block,
 						btr_cur_get_page_cur(cursor));
 			goto func_exit;
@@ -5741,6 +5741,7 @@ btr_cur_pessimistic_delete(
 				if (index->is_instant()) {
 					/* MDEV-17383: free metadata BLOBs! */
 					index->clear_instant_alter();
+					index->table->remove_bulk_trx();
 				}
 				page_cur_set_after_last(
 					block,

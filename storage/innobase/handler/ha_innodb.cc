@@ -5743,10 +5743,8 @@ ha_innobase::open(const char* name, int, uint)
 		}
 	}
 
-	if (!ib_table->stat_n_rows) {
+	if (!ib_table->non_empty) {
 		ib_table->assign_stat_n_rows();
-	} else if (!ib_table->non_empty) {
-		ib_table->non_empty = true;
 	}
 
 	m_prebuilt = row_create_prebuilt(ib_table, table->s->reclength);

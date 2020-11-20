@@ -11472,12 +11472,15 @@ to insert after freeing the leaf segment.
 @param heap heap where tuple is created
 @return tuple for metadata record */
 static
-dtuple_t* get_instant_metadata_tuple(dict_index_t* index,
-                                     mtr_t* mtr, mem_heap_t* heap)
+dtuple_t* get_instant_metadata_tuple(dict_index_t* index, mem_heap_t* heap)
 {
+  mtr_t mtr;
   btr_pcur_t pcur;
+
+  mtr.start();
+  index->set_modified(mtr);
   btr_pcur_open_at_index_side(true, index, BTR_MODIFY_TREE, &pcur, true,
-                              0, mtr);
+                              0, &mtr);
   ut_ad(btr_pcur_is_before_first_on_page(&pcur));
   btr_pcur_move_to_next_on_page(&pcur);
 
@@ -11490,14 +11493,17 @@ dtuple_t* get_instant_metadata_tuple(dict_index_t* index,
   ut_ad(page_rec_is_user_rec(rec));
 
   mem_heap_t* offsets_heap = NULL;
-  rec_offs* offsets = rec_get_offsets(rec, index, NULL, true,
+  rec_offs* offsets= rec_get_offsets(rec, index, NULL, true,
                                      ULINT_UNDEFINED, &offsets_heap);
-  dtuple_t* entry = row_metadata_to_tuple(rec, index, offsets,
-                                          heap, REC_INFO_METADATA_ALTER,
-					  false);
-  dfield_t* dfield = dtuple_get_nth_field(
-     entry, index->first_user_field());
+  dtuple_t* entry= row_metadata_to_tuple(rec, index, offsets, heap,
+                                         REC_INFO_METADATA_ALTER, false);
+  dfield_t* dfield = dtuple_get_nth_field(entry, index->first_user_field());
   index->table->serialise_columns(heap, dfield);
+  const dfield_t* trx_id= dtuple_get_nth_field(
+   entry, dict_col_get_clust_pos(
+	   dict_table_get_sys_col(index->table, DATA_TRX_ID), index));
+  memset(trx_id->data, 0, DATA_TRX_ID_LEN); 
+  mtr.commit();
   return entry;
 }
 
@@ -11506,16 +11512,16 @@ void dict_index_t::empty()
   mtr_t mtr;
   dtuple_t* metadata_tuple;
   mem_heap_t* heap= nullptr;
-
-  mtr.start();
-  mtr.set_named_space_id(table->space->id);
   bool meta_rec_exist= is_instant();
+
   if (meta_rec_exist)
   {
     heap= mem_heap_create(1024);
-    metadata_tuple= get_instant_metadata_tuple(this, &mtr, heap);
+    metadata_tuple= get_instant_metadata_tuple(this, heap);
   }
 
+  mtr.start();
+  mtr.set_named_space_id(table->space->id);
   /* Free the indexes */
   buf_block_t* root_block= buf_page_get(
     page_id_t(table->space->id, page),
@@ -11533,13 +11539,14 @@ void dict_index_t::empty()
 
   btr_root_page_init(root_block, id, this, &mtr);
   if (meta_rec_exist)
-  {
     btr_set_instant(root_block, *this, &mtr);
+  mtr.commit();
+  if (meta_rec_exist)
+  {
     dberr_t err = row_ins_clust_index_entry_low(
       BTR_NO_LOCKING_FLAG | BTR_NO_UNDO_LOG_FLAG, BTR_MODIFY_TREE,
       this, n_uniq, metadata_tuple, 0, nullptr);
     ut_ad(err == DB_SUCCESS);
     mem_heap_free(heap);
   }
-  mtr.commit();
 }
