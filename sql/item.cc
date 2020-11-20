@@ -7500,14 +7500,24 @@ Item *Item::build_pushable_cond(THD *thd,
     condition for which we can calculate an accurate selectivity estimate.
 
     The definition of the class of condition is recursive.
-    1. (base of recursive definition)
+    1. Simple formula
          a. Formula in the form of range predicates:
 
             The predicate would be of type:
                col op const
-              where op can be  >/>=/</<=/=/<>
-              Also the other cases are with [NOT] IN predicate,
-              [NOT] NULL predicate and  LIKE predicate fall in the same category.
+              where op can be
+
+                op:
+                   |  >
+                   |  >=
+                   |  <
+                   |  <=
+                   |  =
+                   |  <>
+              Also the other cases are with
+              [NOT] IN predicate,
+              [NOT] NULL predicate and
+              LIKE predicate.
             The predicate should have only one non-constant argument and
             this argument will be a reference to a column that is used either
             as the first component of an index or statistics are available via
@@ -7525,9 +7535,7 @@ Item *Item::build_pushable_cond(THD *thd,
                 1) from indexes via rec_per_key
                 2) from statistical tables via avg_frequency.
 
-      2. (recursive step)
-        AND / OR formula over formulas defined in section 1 of the
-        definition.
+    2. AND / OR formula over formulas defined in section 1 of the definition.
 
         a) AND Formula
          For AND formula the check for accurate selectivity estimates depends

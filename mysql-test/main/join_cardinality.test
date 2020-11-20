@@ -263,4 +263,48 @@ FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
 DROP TABLE t1;
 
+--echo #
+--echo # Tests when statistics from stat tables cannot be used because of the system variables
+--echo # use_stat_tables and optimizer_use_condition_selectivity
+--echo #
+
+CREATE TABLE t1(a INT, b INT, c INT);
+INSERT INTO t1 SELECT seq, seq, seq from seq_1_to_10;
+CREATE TABLE t2(a INT, b INT);
+INSERT INTO t2 SELECT seq, seq from seq_1_to_10;
+
+ANALYZE TABLE t1 PERSISTENT FOR ALL;
+ANALYZE TABLE t2 PERSISTENT FOR ALL;
+
+SELECT * FROM t1;
+SELECT * FROM t2;
+
+SET @save_use_stat_tables= @@use_stat_tables;
+SET @save_optimizer_use_condition_selectivity= @@optimizer_use_condition_selectivity;
+SET use_stat_tables='never';
+
+EXPLAIN SELECT * FROM t1,t2 WHERE t1.a=t2.b;
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+
+EXPLAIN SELECT * FROM t1 WHERE t1.a > 10;
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+
+SET use_stat_tables= @save_use_stat_tables;
+
+EXPLAIN SELECT * FROM t1 WHERE t1.a > 10;
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+
+set optimizer_use_condition_selectivity=1;
+
+EXPLAIN SELECT * FROM t1 WHERE t1.a > 10;
+SELECT JSON_DETAILED(JSON_EXTRACT(trace, '$**.cardinality_accurate'))
+FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+
+SET optimizer_use_condition_selectivity= @save_optimizer_use_condition_selectivity;
+
+DROP TABLE t1,t2;
+
 SET optimizer_switch=@save_optimizer_switch;

@@ -11402,7 +11402,12 @@ void Field::statistics_available_via_keys()
 
 void Field::statistics_available_via_stat_tables()
 {
-  if (!(read_stats && !read_stats->no_stat_values_provided()))
+  THD *thd= table->in_use;
+  if (!(check_eits_preferred(thd) &&
+        thd->variables.optimizer_use_condition_selectivity > 2))
+    return;
+  if (!(table->stats_is_read &&
+        read_stats && !read_stats->no_stat_values_provided()))
     return;
   stats_available|= (1 << STATISTICS_FOR_RANGE_PREDICATES_AVAILABLE);
   if (!read_stats->is_null(COLUMN_STAT_AVG_FREQUENCY))
@@ -11490,6 +11495,8 @@ bool Field::is_ndv_available_via_keys()
 
 bool Field::is_ndv_available_via_stat_tables()
 {
+  if (!check_eits_preferred(table->in_use))
+    return false;
   if (!(read_stats && !read_stats->no_stat_values_provided() &&
         !read_stats->is_null(COLUMN_STAT_AVG_FREQUENCY)))
     return false;
