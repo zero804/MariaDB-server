@@ -1498,27 +1498,3 @@ next_page:
   }
   goto scan_leaf;
 }
-
-void dict_index_t::empty()
-{
-    mtr_t mtr;
-    mtr.start();
-    /* Free the indexes */
-    buf_block_t* root_block= buf_page_get(
-        page_id_t(table->space->id, page),
-        table->space->zip_size(), RW_X_LATCH, &mtr);
-    if (root_block)
-      btr_free_but_not_root(root_block, mtr.get_log_mode());
-
-    mtr.set_named_space_id(table->space->id);
-    mtr.memset(root_block, PAGE_HEADER + PAGE_BTR_SEG_LEAF,
-	       FSEG_HEADER_SIZE, 0);
-    if (!fseg_create(table->space, PAGE_HEADER + PAGE_BTR_SEG_LEAF,
-                     &mtr, false, root_block))
-    {
-      ut_ad(0);
-    }
-
-    btr_root_page_init(root_block, id, this, &mtr);
-    mtr.commit();
-}

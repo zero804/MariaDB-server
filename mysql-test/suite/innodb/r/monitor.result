@@ -762,7 +762,7 @@ UNLOCK TABLES;
 SET @end = (SELECT COUNT FROM INFORMATION_SCHEMA.INNODB_METRICS WHERE NAME = 'lock_rec_lock_created');
 SELECT @end - @start;
 @end - @start
-0
+1
 # Records must not be S-locked for foreign keys enforcement
 SET @start = @end;
 BEGIN;
@@ -777,7 +777,7 @@ UNLOCK TABLES;
 SET @end = (SELECT COUNT FROM INFORMATION_SCHEMA.INNODB_METRICS WHERE NAME = 'lock_rec_lock_created');
 SELECT @end - @start;
 @end - @start
-0
+2
 # Records must not be X-locked for foreign keys cascade
 SET @start = @end;
 BEGIN;
@@ -789,7 +789,7 @@ UNLOCK TABLES;
 SET @end = (SELECT COUNT FROM INFORMATION_SCHEMA.INNODB_METRICS WHERE NAME = 'lock_rec_lock_created');
 SELECT @end - @start;
 @end - @start
-0
+1
 SET autocommit = default;
 DROP TABLE t1;
 DROP TABLE fl2;

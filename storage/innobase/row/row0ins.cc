@@ -2562,7 +2562,7 @@ row_ins_clust_index_entry_low(
 	ut_ad(!dict_index_is_unique(index)
 	      || n_uniq == dict_index_get_n_unique(index));
 	ut_ad(!n_uniq || n_uniq == dict_index_get_n_unique(index));
-	ut_ad(!thr_get_trx(thr)->in_rollback);
+	ut_ad(!thr || !thr_get_trx(thr)->in_rollback);
 
 	mtr_start(&mtr);
 
@@ -2636,7 +2636,7 @@ row_ins_clust_index_entry_low(
 
 	if (UNIV_UNLIKELY(entry->info_bits != 0)) {
 		ut_ad(entry->is_metadata());
-		ut_ad(flags == BTR_NO_LOCKING_FLAG);
+		ut_ad(flags & BTR_NO_LOCKING_FLAG);
 		ut_ad(index->is_instant());
 		ut_ad(!dict_index_is_online_ddl(index));
 
@@ -2761,7 +2761,7 @@ do_insert:
 				log_write_up_to(mtr.commit_lsn(), true););
 			err = row_ins_index_entry_big_rec(
 				entry, big_rec, offsets, &offsets_heap, index,
-				thr_get_trx(thr)->mysql_thd);
+				thr ? thr_get_trx(thr)->mysql_thd : nullptr);
 			dtuple_convert_back_big_rec(index, entry, big_rec);
 		} else {
 			if (err == DB_SUCCESS

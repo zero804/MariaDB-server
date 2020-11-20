@@ -3582,7 +3582,7 @@ fail_err:
 	} else if (entry->info_bits & REC_INFO_MIN_REC_FLAG) {
 		ut_ad(entry->is_metadata());
 		ut_ad(index->is_instant());
-		ut_ad(flags == BTR_NO_LOCKING_FLAG);
+		ut_ad(flags & BTR_NO_LOCKING_FLAG);
 	} else {
 		rw_lock_t* ahi_latch = btr_search_sys.get_latch(*index);
 		if (!reorg && cursor->flag == BTR_CUR_HASH) {

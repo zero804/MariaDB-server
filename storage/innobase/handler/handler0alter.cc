@@ -11464,3 +11464,82 @@ ib_sequence_t::operator++(int) UNIV_NOTHROW
 
 	return(current);
 }
+
+/** Get the metadata tuple from the index. It can be used later
+to insert after freeing the leaf segment.
+@param index metadata record to be read from
+@param mtr mini-transaction to read the metadata record
+@param heap heap where tuple is created
+@return tuple for metadata record */
+static
+dtuple_t* get_instant_metadata_tuple(dict_index_t* index,
+                                     mtr_t* mtr, mem_heap_t* heap)
+{
+  btr_pcur_t pcur;
+  btr_pcur_open_at_index_side(true, index, BTR_MODIFY_TREE, &pcur, true,
+                              0, mtr);
+  ut_ad(btr_pcur_is_before_first_on_page(&pcur));
+  btr_pcur_move_to_next_on_page(&pcur);
+
+  buf_block_t* block = btr_pcur_get_block(&pcur);
+  ut_ad(page_is_leaf(block->frame));
+  ut_ad(!page_has_prev(block->frame));
+  ut_ad(!buf_block_get_page_zip(block));
+  const rec_t* rec = btr_pcur_get_rec(&pcur);
+  ut_ad(rec_is_metadata(rec, *index));
+  ut_ad(page_rec_is_user_rec(rec));
+
+  mem_heap_t* offsets_heap = NULL;
+  rec_offs* offsets = rec_get_offsets(rec, index, NULL, true,
+                                     ULINT_UNDEFINED, &offsets_heap);
+  dtuple_t* entry = row_metadata_to_tuple(rec, index, offsets,
+                                          heap, REC_INFO_METADATA_ALTER,
+					  false);
+  dfield_t* dfield = dtuple_get_nth_field(
+     entry, index->first_user_field());
+  index->table->serialise_columns(heap, dfield);
+  return entry;
+}
+
+void dict_index_t::empty()
+{
+  mtr_t mtr;
+  dtuple_t* metadata_tuple;
+  mem_heap_t* heap= nullptr;
+
+  mtr.start();
+  mtr.set_named_space_id(table->space->id);
+  bool meta_rec_exist= is_instant();
+  if (meta_rec_exist)
+  {
+    heap= mem_heap_create(1024);
+    metadata_tuple= get_instant_metadata_tuple(this, &mtr, heap);
+  }
+
+  /* Free the indexes */
+  buf_block_t* root_block= buf_page_get(
+    page_id_t(table->space->id, page),
+    table->space->zip_size(), RW_X_LATCH, &mtr);
+  if (root_block)
+    btr_free_but_not_root(root_block, mtr.get_log_mode());
+
+  mtr.memset(root_block, PAGE_HEADER + PAGE_BTR_SEG_LEAF,
+             FSEG_HEADER_SIZE, 0);
+  if (!fseg_create(table->space, PAGE_HEADER + PAGE_BTR_SEG_LEAF,
+                   &mtr, false, root_block))
+  {
+    ut_ad(0);
+  }
+
+  btr_root_page_init(root_block, id, this, &mtr);
+  if (meta_rec_exist)
+  {
+    btr_set_instant(root_block, *this, &mtr);
+    dberr_t err = row_ins_clust_index_entry_low(
+      BTR_NO_LOCKING_FLAG | BTR_NO_UNDO_LOG_FLAG, BTR_MODIFY_TREE,
+      this, n_uniq, metadata_tuple, 0, nullptr);
+    ut_ad(err == DB_SUCCESS);
+    mem_heap_free(heap);
+  }
+  mtr.commit();
+}
