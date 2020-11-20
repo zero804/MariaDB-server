@@ -44,16 +44,27 @@ protected:
     DBUG_ASSERT(l & ~WRITER_PENDING);
     return l;
   }
-  /** Start waiting for an exclusive lock. */
-  void write_lock_wait_start()
-  { lock.fetch_or(WRITER_WAITING, std::memory_order_relaxed); }
+  /** Start waiting for an exclusive lock.
+  @return current value of the lock word */
+  uint32_t write_lock_wait_start()
+  {
+    return lock.fetch_or(WRITER_WAITING, std::memory_order_relaxed);
+  }
+  /** Wait for an exclusive lock.
+  @param l the value of the lock word
+  @return whether the exclusive lock was acquired */
+  bool write_lock_wait_try(uint32_t &l)
+  {
+    l= WRITER_WAITING;
+    return lock.compare_exchange_strong(l, WRITER, std::memory_order_acquire,
+                                        std::memory_order_relaxed);
+  }
   /** Wait for an exclusive lock.
   @return whether the exclusive lock was acquired */
   bool write_lock_poll()
   {
-    auto l= WRITER_WAITING;
-    if (lock.compare_exchange_strong(l, WRITER, std::memory_order_acquire,
-                                     std::memory_order_relaxed))
+    uint32_t l;
+    if (write_lock_wait_try(l))
       return true;
     if (!(l & WRITER_WAITING))
       /* write_lock() must have succeeded for another thread */
@@ -65,12 +76,14 @@ public:
   /** Default constructor */
   rw_lock() : lock(UNLOCKED) {}
 
-  /** Release a shared lock */
-  void read_unlock()
+  /** Release a shared lock.
+  @return whether any writers may have to be woken up */
+  bool read_unlock()
   {
-    IF_DBUG_ASSERT(auto l=,) lock.fetch_sub(1, std::memory_order_release);
-    DBUG_ASSERT(l & ~WRITER_PENDING); /* at least one read lock */
+    auto l= lock.fetch_sub(1, std::memory_order_release);
+    DBUG_ASSERT(~WRITER_PENDING & l); /* at least one read lock */
     DBUG_ASSERT(!(l & WRITER)); /* no write lock must have existed */
+    return (~WRITER_PENDING & l) == 1;
   }
   /** Release an exclusive lock */
   void write_unlock()
