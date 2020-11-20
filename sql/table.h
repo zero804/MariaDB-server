@@ -54,7 +54,6 @@ class ACL_internal_table_access;
 class Field;
 class FK_ddl_vector;
 class Table_name;
-class Table_name_set;
 class Table_statistics;
 class With_element;
 struct TDC_element;
@@ -736,7 +735,6 @@ struct TABLE_SHARE
   FK_list foreign_keys;
   FK_list referenced_keys;
   bool fk_handle_create(THD *thd, FK_ddl_vector &shares, FK_list *fk_add= NULL);
-  void fk_revert_create(THD *thd, Table_name_set &ref_tables);
   bool fk_check_consistency(THD *thd);
   bool referenced_by_foreign_key() const
   {
