@@ -183,7 +183,7 @@ que_thr_end_lock_wait(
 	que_thr_t*	thr;
 
 	mysql_mutex_assert_owner(&lock_sys.mutex);
-	mysql_mutex_assert_owner(&trx->mutex);
+	ut_ad(mutex_own(&trx->mutex));
 
 	thr = trx->lock.wait_thr;
 
@@ -231,7 +231,7 @@ que_fork_scheduler_round_robin(
 	que_fork_t*	fork,		/*!< in: a query fork */
 	que_thr_t*	thr)		/*!< in: current pos */
 {
-	mysql_mutex_lock(&fork->trx->mutex);
+	mutex_enter(&fork->trx->mutex);
 
 	/* If no current, start first available. */
 	if (thr == NULL) {
@@ -261,7 +261,7 @@ que_fork_scheduler_round_robin(
 		}
 	}
 
-	mysql_mutex_unlock(&fork->trx->mutex);
+	mutex_exit(&fork->trx->mutex);
 
 	return(thr);
 }
@@ -590,22 +590,18 @@ que_thr_node_step(
 		return(thr);
 	}
 
-	mysql_mutex_lock(&thr->graph->trx->mutex);
+	auto mutex = &thr->graph->trx->mutex;
 
-	if (que_thr_peek_stop(thr)) {
+	mutex_enter(mutex);
 
-		mysql_mutex_unlock(&thr->graph->trx->mutex);
-
-		return(thr);
+	if (!que_thr_peek_stop(thr)) {
+		/* Thread execution completed */
+		thr->state = QUE_THR_COMPLETED;
+		thr = NULL;
 	}
 
-	/* Thread execution completed */
-
-	thr->state = QUE_THR_COMPLETED;
-
-	mysql_mutex_unlock(&thr->graph->trx->mutex);
-
-	return(NULL);
+	mutex_exit(mutex);
+	return(thr);
 }
 
 /**********************************************************************//**
@@ -622,7 +618,7 @@ que_thr_stop(
 
 	graph = thr->graph;
 
-	mysql_mutex_assert_owner(&trx->mutex);
+	ut_ad(mutex_own(&trx->mutex));
 
 	if (graph->state == QUE_FORK_COMMAND_WAIT) {
 
@@ -675,7 +671,7 @@ que_thr_dec_refer_count(
 	trx = thr_get_trx(thr);
 
 	ut_a(thr->is_active);
-	mysql_mutex_assert_owner(&trx->mutex);
+	ut_ad(mutex_own(&trx->mutex));
 
 	if (thr->state == QUE_THR_RUNNING) {
 
@@ -725,31 +721,28 @@ que_thr_stop_for_mysql(
 
 	trx = thr_get_trx(thr);
 
-	mysql_mutex_lock(&trx->mutex);
+	mutex_enter(&trx->mutex);
 
 	if (thr->state == QUE_THR_RUNNING) {
-
-		if (trx->error_state != DB_SUCCESS
-		    && trx->error_state != DB_LOCK_WAIT) {
-
-			/* Error handling built for the MySQL interface */
+		switch (trx->error_state) {
+		default:
+			/* Error handling built for the MariaDB interface */
 			thr->state = QUE_THR_COMPLETED;
-		} else {
+			break;
+		case DB_SUCCESS:
+		case DB_LOCK_WAIT:
 			/* It must have been a lock wait but the lock was
 			already released, or this transaction was chosen
 			as a victim in selective deadlock resolution */
-
-			mysql_mutex_unlock(&trx->mutex);
-
-			return;
+			goto func_exit;
 		}
 	}
 
 	ut_ad(thr->is_active);
 	ut_d(thr->set_active(false));
 	thr->is_active= false;
-
-	mysql_mutex_unlock(&trx->mutex);
+func_exit:
+	mutex_exit(&trx->mutex);
 }
 
 #ifdef UNIV_DEBUG
@@ -987,7 +980,7 @@ que_run_threads_low(
 
 	ut_ad(thr->state == QUE_THR_RUNNING);
 	ut_a(thr_get_trx(thr)->error_state == DB_SUCCESS);
-	mysql_mutex_assert_not_owner(&thr->graph->trx->mutex);
+	ut_ad(!mutex_own(&thr->graph->trx->mutex));
 
 	/* cumul_resource counts how much resources the OS thread (NOT the
 	query thread) has spent in this function */
@@ -1009,27 +1002,23 @@ que_run_threads_low(
 		next_thr = que_thr_step(thr);
 		/*-------------------------*/
 
-		mysql_mutex_lock(&trx->mutex);
-
-		ut_a(next_thr == NULL || trx->error_state == DB_SUCCESS);
-
-		if (next_thr != thr) {
-			ut_a(next_thr == NULL);
-
+		if (next_thr) {
+			ut_a(trx->error_state == DB_SUCCESS);
+			ut_a(next_thr == thr);
+		} else {
 			/* This can change next_thr to a non-NULL value
 			if there was a lock wait that already completed. */
 
+			mutex_enter(&trx->mutex);
 			que_thr_dec_refer_count(thr, &next_thr);
+			mutex_exit(&trx->mutex);
 
 			if (next_thr != NULL) {
-
 				thr = next_thr;
 			}
 		}
 
 		ut_ad(trx == thr_get_trx(thr));
-
-		mysql_mutex_unlock(&trx->mutex);
 
 	} while (next_thr != NULL);
 }
@@ -1041,7 +1030,7 @@ que_run_threads(
 /*============*/
 	que_thr_t*	thr)	/*!< in: query thread */
 {
-	mysql_mutex_assert_not_owner(&thr->graph->trx->mutex);
+	ut_ad(!mutex_own(&thr->graph->trx->mutex));
 
 loop:
 	ut_a(thr_get_trx(thr)->error_state == DB_SUCCESS);
@@ -1049,6 +1038,12 @@ loop:
 	que_run_threads_low(thr);
 
 	switch (thr->state) {
+	default:
+		ut_error;
+	case QUE_THR_COMPLETED:
+	case QUE_THR_COMMAND_WAIT:
+		/* Do nothing */
+		break;
 
 	case QUE_THR_RUNNING:
 		/* There probably was a lock wait, but it already ended
@@ -1058,30 +1053,21 @@ loop:
 
 	case QUE_THR_LOCK_WAIT:
 		lock_wait_suspend_thread(thr);
+		trx_t* trx = thr->graph->trx;
 
-		mysql_mutex_lock(&thr->graph->trx->mutex);
-
-		ut_a(thr_get_trx(thr)->id != 0);
-
-		if (thr_get_trx(thr)->error_state != DB_SUCCESS) {
+		mutex_enter(&trx->mutex);
+		ut_ad(trx->id);
+		const dberr_t err = trx->error_state;
+		if (err != DB_SUCCESS) {
 			/* thr was chosen as a deadlock victim or there was
 			a lock wait timeout */
-
 			que_thr_dec_refer_count(thr, NULL);
-			mysql_mutex_unlock(&thr->graph->trx->mutex);
-			break;
 		}
+		mutex_exit(&trx->mutex);
 
-		mysql_mutex_unlock(&thr->graph->trx->mutex);
-		goto loop;
-
-	case QUE_THR_COMPLETED:
-	case QUE_THR_COMMAND_WAIT:
-		/* Do nothing */
-		break;
-
-	default:
-		ut_error;
+		if (err == DB_SUCCESS) {
+			goto loop;
+		}
 	}
 }
 

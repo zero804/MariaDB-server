@@ -193,10 +193,10 @@ row_vers_impl_x_locked_low(
 			heap, &prev_version, NULL,
 			dict_index_has_virtual(index) ? &vrow : NULL, 0);
 
-		mysql_mutex_lock(&trx->mutex);
+		mutex_enter(&trx->mutex);
 		const bool committed = trx_state_eq(
 			trx, TRX_STATE_COMMITTED_IN_MEMORY);
-		mysql_mutex_unlock(&trx->mutex);
+		mutex_exit(&trx->mutex);
 
 		/* The oldest visible clustered index version must not be
 		delete-marked, because we never start a transaction by

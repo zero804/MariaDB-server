@@ -203,7 +203,7 @@ struct TrxFactory {
 			trx->trx_savepoints,
 			&trx_named_savept_t::trx_savepoints);
 
-		mysql_mutex_init(trx_mutex_key, &trx->mutex, nullptr);
+		mutex_create(LATCH_ID_TRX_POOL, &trx->mutex);
 	}
 
 	/** Release resources held by the transaction object.
@@ -240,7 +240,7 @@ struct TrxFactory {
 		UT_DELETE(trx->xid);
 		ut_free(trx->detailed_error);
 
-		mysql_mutex_destroy(&trx->mutex);
+		mutex_destroy(&trx->mutex);
 
 		trx->mod_tables.~trx_mod_tables_t();
 
@@ -483,9 +483,9 @@ inline void trx_t::commit_state()
   makes modifications to the database, will get an lsn larger than the
   committing transaction T. In the case where the log flush fails, and
   T never gets committed, also T2 will never get committed. */
-  mysql_mutex_lock(&mutex);
+  mutex_enter(&mutex);
   state= TRX_STATE_COMMITTED_IN_MEMORY;
-  mysql_mutex_unlock(&mutex);
+  mutex_exit(&mutex);
   ut_ad(id || !is_referenced());
 }
 
@@ -1478,7 +1478,7 @@ inline void trx_t::commit_in_memory(const mtr_t *mtr)
   }
   lock.was_chosen_as_wsrep_victim= false;
 #endif /* WITH_WSREP */
-  mysql_mutex_lock(&mutex);
+  mutex_enter(&mutex);
   dict_operation= TRX_DICT_OP_NONE;
 
   DBUG_LOG("trx", "Commit in memory: " << this);
@@ -1486,7 +1486,7 @@ inline void trx_t::commit_in_memory(const mtr_t *mtr)
 
   assert_freed();
   trx_init(this);
-  mysql_mutex_unlock(&mutex);
+  mutex_exit(&mutex);
 
   ut_a(error_state == DB_SUCCESS);
   if (!srv_read_only_mode)
@@ -2011,9 +2011,9 @@ trx_prepare(
 	DBUG_EXECUTE_IF("ib_trx_crash_during_xa_prepare_step", DBUG_SUICIDE(););
 
 	ut_a(trx->state == TRX_STATE_ACTIVE);
-	mysql_mutex_lock(&trx->mutex);
+	mutex_enter(&trx->mutex);
 	trx->state = TRX_STATE_PREPARED;
-	mysql_mutex_unlock(&trx->mutex);
+	mutex_exit(&trx->mutex);
 
 	if (lsn) {
 		/* Depending on the my.cnf options, we may now write the log
@@ -2155,7 +2155,7 @@ static my_bool trx_get_trx_by_xid_callback(rw_trx_hash_element_t *element,
   mutex_enter(&element->mutex);
   if (trx_t *trx= element->trx)
   {
-    mysql_mutex_lock(&trx->mutex);
+    mutex_enter(&trx->mutex);
     if (trx->is_recovered &&
 	(trx_state_eq(trx, TRX_STATE_PREPARED) ||
 	 trx_state_eq(trx, TRX_STATE_PREPARED_RECOVERED)) &&
@@ -2172,7 +2172,7 @@ static my_bool trx_get_trx_by_xid_callback(rw_trx_hash_element_t *element,
       arg->trx= trx;
       found= 1;
     }
-    mysql_mutex_unlock(&trx->mutex);
+    mutex_exit(&trx->mutex);
   }
   mutex_exit(&element->mutex);
   return found;
