@@ -5281,9 +5281,7 @@ static void lock_rec_other_trx_holds_expl(trx_t *caller_trx, trx_t *trx,
     ut_ad(!page_rec_is_metadata(rec));
     mysql_mutex_lock(&lock_sys.mutex);
     ut_ad(trx->is_referenced());
-    mutex_enter(&trx->mutex);
-    const trx_state_t state = trx->state;
-    mutex_exit(&trx->mutex);
+    const trx_state_t state{trx->state};
     ut_ad(state != TRX_STATE_NOT_STARTED);
     if (state == TRX_STATE_COMMITTED_IN_MEMORY)
     {
