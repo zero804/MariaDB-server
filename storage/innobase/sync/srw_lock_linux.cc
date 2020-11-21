@@ -31,37 +31,28 @@ int srw_lock_dummy_function() { return 0; }
 
 # include "srv0srv.h"
 
-/** Wait for a read lock after a failed read_trylock() */
-void srw_lock::read_lock()
+/** Wait for a read lock.
+@param lock word value from a failed read_trylock() */
+void srw_lock::read_lock(uint32_t l)
 {
-  for (;;)
+  do
   {
-    uint32_t l= read_lock_yield() - 1;
-    if (l & WRITER_PENDING)
-    {
-      if (l == WRITER_WAITING)
-      wake_writer:
-        syscall(SYS_futex, word(), FUTEX_WAKE_PRIVATE, 1, nullptr, nullptr, 0);
-      syscall(SYS_futex, word(), FUTEX_WAIT_PRIVATE, l, nullptr, nullptr, 0);
-    }
+    if (l == WRITER_WAITING)
+    wake_writer:
+      syscall(SYS_futex, word(), FUTEX_WAKE_PRIVATE, 1, nullptr, nullptr, 0);
     else
-    {
       for (auto spin= srv_n_spin_wait_rounds; spin; spin--)
       {
-        if (read_trylock())
+        ut_delay(srv_spin_wait_delay);
+        if (read_trylock(l))
           return;
-        l= read_lock_yield() - 1;
-        if (l & WRITER_PENDING)
-        {
-          if (l == WRITER_WAITING)
-            goto wake_writer;
-          ut_delay(srv_spin_wait_delay);
-        }
+        else if (l == WRITER_WAITING)
+          goto wake_writer;
       }
-    }
-    if (read_trylock())
-      return;
+
+    syscall(SYS_futex, word(), FUTEX_WAIT_PRIVATE, l, nullptr, nullptr, 0);
   }
+  while (!read_trylock(l));
 }
 
 /** Wait for a write lock after a failed write_trylock() */

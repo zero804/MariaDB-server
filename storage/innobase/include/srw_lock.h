@@ -59,8 +59,9 @@ public:
 # else
   /** @return pointer to the lock word */
   rw_lock *word() { return static_cast<rw_lock*>(this); }
-  /** Wait for a read lock after a failed read_trylock() */
-  void read_lock();
+  /** Wait for a read lock.
+  @param l lock word from a failed read_trylock() */
+  void read_lock(uint32_t l);
   /** Wait for a write lock after a failed write_trylock() */
   void write_lock();
 # endif
@@ -85,21 +86,22 @@ public:
   }
   void rd_lock()
   {
+    IF_WIN(, uint32_t l);
 # ifdef UNIV_PFS_RWLOCK
-    if (read_trylock())
+    if (read_trylock(IF_WIN(, l)))
       return;
     if (pfs_psi)
     {
       PSI_rwlock_locker_state state;
       PSI_rwlock_locker *locker= PSI_RWLOCK_CALL(start_rwlock_rdwait)
         (&state, pfs_psi, PSI_RWLOCK_READLOCK, __FILE__, __LINE__);
-      read_lock();
+      read_lock(IF_WIN(, l));
       if (locker)
         PSI_RWLOCK_CALL(end_rwlock_rdwait)(locker, 0);
       return;
     }
 # endif /* UNIV_PFS_RWLOCK */
-    IF_WIN(, if (!read_trylock())) read_lock();
+    IF_WIN(read_lock(), if (!read_trylock(l)) read_lock(l));
   }
   void wr_lock()
   {
