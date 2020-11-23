@@ -402,14 +402,14 @@ rtr_pcur_getnext_from_path(
 			lock_mutex_exit();
 
 			if (rw_latch == RW_NO_LATCH) {
-				rw_lock_s_lock(&(block->lock));
+				block->lock.s_lock(__FILE__, __LINE__);
 			}
 
 			lock_prdt_lock(block, &prdt, index, LOCK_S,
 				       LOCK_PREDICATE, btr_cur->rtr_info->thr);
 
 			if (rw_latch == RW_NO_LATCH) {
-				rw_lock_s_unlock(&(block->lock));
+				block->lock.s_unlock();
 			}
 		}
 
@@ -461,8 +461,7 @@ rtr_pcur_getnext_from_path(
 		mtr_commit(mtr);
 		mtr_start(mtr);
 	} else if (!index_locked) {
-		mtr_memo_release(mtr, dict_index_get_lock(index),
-				 MTR_MEMO_X_LOCK);
+		mtr_memo_release(mtr, &index->lock, MTR_MEMO_X_LOCK);
 	}
 
 	return(found);

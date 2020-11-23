@@ -46,6 +46,8 @@ public:
   void rd_unlock() { mysql_rwlock_unlock(&lock); }
   void wr_lock() { mysql_rwlock_wrlock(&lock); }
   void wr_unlock() { mysql_rwlock_unlock(&lock); }
+  bool rd_lock_try() { return !mysql_rwlock_tryrdlock(&lock); }
+  bool wr_lock_try() { return !mysql_rwlock_trywrlock(&lock); }
 #else
 # ifdef UNIV_PFS_RWLOCK
   PSI_rwlock *pfs_psi;
@@ -64,6 +66,9 @@ public:
   void read_lock(uint32_t l);
   /** Wait for a write lock after a failed write_trylock() */
   void write_lock();
+public:
+  /** needed for dict_index_t::clone() */
+  void operator=(const srw_lock &) {}
 # endif
 
 public:
@@ -83,7 +88,11 @@ public:
       pfs_psi= nullptr;
     }
 # endif
+    DBUG_ASSERT(!is_locked_or_waiting());
   }
+  bool rd_lock_try()
+  { IF_WIN(,uint32_t l); return read_trylock(IF_WIN(, l)); }
+  bool wr_lock_try() { return write_trylock(); }
   void rd_lock()
   {
     IF_WIN(, uint32_t l);

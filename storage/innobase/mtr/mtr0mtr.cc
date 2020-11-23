@@ -170,12 +170,12 @@ struct FindPage
 		    || m_ptr >= block->frame + srv_page_size) {
 			return(true);
 		}
-
+#if 0 // FIXME
 		ut_ad(!(m_flags & (MTR_MEMO_PAGE_S_FIX
 				   | MTR_MEMO_PAGE_SX_FIX
 				   | MTR_MEMO_PAGE_X_FIX))
 		      || rw_lock_own_flagged(&block->lock, m_flags));
-
+#endif
 		m_slot = slot;
 		return(false);
 	}
@@ -204,12 +204,14 @@ private:
 @param slot	memo slot */
 static void memo_slot_release(mtr_memo_slot_t *slot)
 {
-  switch (slot->type) {
+  switch (const auto type= slot->type) {
   case MTR_MEMO_S_LOCK:
-    rw_lock_s_unlock(reinterpret_cast<rw_lock_t*>(slot->object));
+    static_cast<sux_lock*>(slot->object)->s_unlock();
     break;
+  case MTR_MEMO_X_LOCK:
   case MTR_MEMO_SX_LOCK:
-    rw_lock_sx_unlock(reinterpret_cast<rw_lock_t*>(slot->object));
+    static_cast<sux_lock*>(slot->object)->
+      u_or_x_unlock(type == MTR_MEMO_SX_LOCK);
     break;
   case MTR_MEMO_SPACE_X_LOCK:
     static_cast<fil_space_t*>(slot->object)->set_committed_size();
@@ -217,9 +219,6 @@ static void memo_slot_release(mtr_memo_slot_t *slot)
     break;
   case MTR_MEMO_SPACE_S_LOCK:
     static_cast<fil_space_t*>(slot->object)->s_unlock();
-    break;
-  case MTR_MEMO_X_LOCK:
-    rw_lock_x_unlock(reinterpret_cast<rw_lock_t*>(slot->object));
     break;
   default:
 #ifdef UNIV_DEBUG
@@ -234,7 +233,7 @@ static void memo_slot_release(mtr_memo_slot_t *slot)
       break;
     }
 #endif /* UNIV_DEBUG */
-    buf_block_t *block= reinterpret_cast<buf_block_t*>(slot->object);
+    buf_block_t *block= static_cast<buf_block_t*>(slot->object);
     buf_page_release_latch(block, slot->type & ~MTR_MEMO_MODIFY);
     block->unfix();
     break;
@@ -249,9 +248,9 @@ struct ReleaseLatches {
   {
     if (!slot->object)
       return true;
-    switch (slot->type) {
+    switch (const auto type= slot->type) {
     case MTR_MEMO_S_LOCK:
-      rw_lock_s_unlock(reinterpret_cast<rw_lock_t*>(slot->object));
+      static_cast<sux_lock*>(slot->object)->s_unlock();
       break;
     case MTR_MEMO_SPACE_X_LOCK:
       static_cast<fil_space_t*>(slot->object)->set_committed_size();
@@ -261,10 +260,9 @@ struct ReleaseLatches {
       static_cast<fil_space_t*>(slot->object)->s_unlock();
       break;
     case MTR_MEMO_X_LOCK:
-      rw_lock_x_unlock(reinterpret_cast<rw_lock_t*>(slot->object));
-      break;
     case MTR_MEMO_SX_LOCK:
-      rw_lock_sx_unlock(reinterpret_cast<rw_lock_t*>(slot->object));
+      static_cast<sux_lock*>(slot->object)->
+        u_or_x_unlock(type == MTR_MEMO_SX_LOCK);
       break;
     default:
 #ifdef UNIV_DEBUG
@@ -279,7 +277,7 @@ struct ReleaseLatches {
         break;
       }
 #endif /* UNIV_DEBUG */
-      buf_block_t *block= reinterpret_cast<buf_block_t*>(slot->object);
+      buf_block_t *block= static_cast<buf_block_t*>(slot->object);
       buf_page_release_latch(block, slot->type & ~MTR_MEMO_MODIFY);
       block->unfix();
       break;
@@ -944,7 +942,7 @@ bool mtr_t::have_x_latch(const buf_block_t &block) const
                                  MTR_MEMO_BUF_FIX | MTR_MEMO_MODIFY));
     return false;
   }
-  ut_ad(rw_lock_own(&block.lock, RW_LOCK_X));
+  ut_ad(block.lock.have_x());
   return true;
 }
 
@@ -968,7 +966,7 @@ bool mtr_t::memo_contains(const fil_space_t& space, bool shared)
 @param lock   latch to search for
 @param type   held latch type
 @return whether (lock,type) is contained */
-bool mtr_t::memo_contains(const rw_lock_t &lock, mtr_memo_type_t type)
+bool mtr_t::memo_contains(const sux_lock &lock, mtr_memo_type_t type)
 {
   Iterate<Find> iteration(Find(&lock, type));
   if (m_memo.for_each_block_in_reverse(iteration))
@@ -976,13 +974,13 @@ bool mtr_t::memo_contains(const rw_lock_t &lock, mtr_memo_type_t type)
 
   switch (type) {
   case MTR_MEMO_X_LOCK:
-    ut_ad(rw_lock_own(&lock, RW_LOCK_X));
+    ut_ad(lock.have_x());
     break;
   case MTR_MEMO_SX_LOCK:
-    ut_ad(rw_lock_own(&lock, RW_LOCK_SX));
+    ut_ad(lock.have_u_or_x()); // FIXME: ut_ad(lock.have_u());
     break;
   case MTR_MEMO_S_LOCK:
-    ut_ad(rw_lock_own(&lock, RW_LOCK_S));
+    // FIXME: ut_ad(lock.have_s());
     break;
   default:
     break;
@@ -1030,19 +1028,19 @@ struct FlaggedCheck {
 		if (m_ptr != slot->object || !(m_flags & slot->type)) {
 			return(true);
 		}
-
+#if 0 // FIXME
 		if (ulint flags = m_flags & (MTR_MEMO_PAGE_S_FIX
 					     | MTR_MEMO_PAGE_SX_FIX
 					     | MTR_MEMO_PAGE_X_FIX)) {
-			rw_lock_t* lock = &static_cast<buf_block_t*>(
+			sux_lock* lock = &static_cast<buf_block_t*>(
 				const_cast<void*>(m_ptr))->lock;
 			ut_ad(rw_lock_own_flagged(lock, flags));
 		} else {
-			rw_lock_t* lock = static_cast<rw_lock_t*>(
+			sux_lock* lock = static_cast<rw_lock_t*>(
 				const_cast<void*>(m_ptr));
 			ut_ad(rw_lock_own_flagged(lock, m_flags >> 5));
 		}
-
+#endif
 		return(false);
 	}
 
