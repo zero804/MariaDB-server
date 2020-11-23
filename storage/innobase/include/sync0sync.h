@@ -78,7 +78,6 @@ extern mysql_pfs_key_t	lock_mutex_key;
 extern mysql_pfs_key_t	lock_wait_mutex_key;
 extern mysql_pfs_key_t	trx_sys_mutex_key;
 extern mysql_pfs_key_t	srv_threads_mutex_key;
-extern mysql_pfs_key_t	sync_array_mutex_key;
 extern mysql_pfs_key_t	thread_mutex_key;
 extern mysql_pfs_key_t  row_drop_list_mutex_key;
 extern mysql_pfs_key_t	rw_trx_hash_element_mutex_key;

@@ -45,6 +45,7 @@ Created 10/10/1995 Heikki Tuuri
 #include "que0types.h"
 #include "trx0types.h"
 #include "fil0fil.h"
+#include "ut0counter.h"
 
 #include "mysql/psi/mysql_stage.h"
 #include "mysql/psi/psi.h"
@@ -485,9 +486,6 @@ extern uint srv_n_purge_threads;
 
 /* the number of pages to purge in one batch */
 extern ulong srv_purge_batch_size;
-
-/* the number of sync wait arrays */
-extern ulong srv_sync_array_size;
 
 /* print all user-level transactions deadlocks to mysqld stderr */
 extern my_bool srv_print_all_deadlocks;
