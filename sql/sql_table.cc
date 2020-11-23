@@ -13348,6 +13348,7 @@ FK_ddl_backup::FK_ddl_backup(Share_acquire&& _sa) :
   {
     share= sa.share;
     update_frm= true;
+    autocommit= false;
   }
 }
 
@@ -13402,5 +13403,6 @@ FK_share_backup::rollback(ddl_log_info& log_info)
     share->referenced_keys= referenced_keys;
     share= NULL;
   }
-  delete_shadow_entry= NULL;
+  if (!autocommit)
+    delete_shadow_entry= NULL;
 }
