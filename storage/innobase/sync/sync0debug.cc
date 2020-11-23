@@ -47,7 +47,7 @@ my_bool		srv_sync_debug;
 /** The global mutex which protects debug info lists of all rw-locks.
 To modify the debug info list of an rw-lock, this mutex has to be
 acquired in addition to the mutex protecting the lock. */
-static SysMutex		rw_lock_debug_mutex;
+static mysql_mutex_t rw_lock_debug_mutex;
 
 /** The latch held by a thread */
 struct Latched {
@@ -1129,7 +1129,7 @@ void
 LatchDebug::init()
 	UNIV_NOTHROW
 {
-	mutex_create(LATCH_ID_RW_LOCK_DEBUG, &rw_lock_debug_mutex);
+  mysql_mutex_init(rw_lock_debug_mutex_key, &rw_lock_debug_mutex, nullptr);
 }
 
 /** Shutdown the latch debug checking
@@ -1140,7 +1140,7 @@ void
 LatchDebug::shutdown()
 	UNIV_NOTHROW
 {
-	mutex_free(&rw_lock_debug_mutex);
+	mysql_mutex_destroy(&rw_lock_debug_mutex);
 
 	ut_a(s_initialized);
 
@@ -1151,22 +1151,18 @@ LatchDebug::shutdown()
 	LatchDebug::s_instance = NULL;
 }
 
-/** Acquires the debug mutex. We cannot use the mutex defined in sync0sync,
-because the debug mutex is also acquired in sync0arr while holding the OS
-mutex protecting the sync array, and the ordinary mutex_enter might
-recursively call routines in sync0arr, leading to a deadlock on the OS
-mutex. */
+/** Acquires the debug mutex. */
 void
 rw_lock_debug_mutex_enter()
 {
-	mutex_enter(&rw_lock_debug_mutex);
+	mysql_mutex_lock(&rw_lock_debug_mutex);
 }
 
 /** Releases the debug mutex. */
 void
 rw_lock_debug_mutex_exit()
 {
-	mutex_exit(&rw_lock_debug_mutex);
+	mysql_mutex_unlock(&rw_lock_debug_mutex);
 }
 #endif /* UNIV_DEBUG */
 
@@ -1218,15 +1214,6 @@ sync_latch_meta_init()
 	LATCH_ADD_MUTEX(REDO_RSEG, SYNC_REDO_RSEG, redo_rseg_mutex_key);
 
 	LATCH_ADD_MUTEX(NOREDO_RSEG, SYNC_NOREDO_RSEG, noredo_rseg_mutex_key);
-
-#ifdef UNIV_DEBUG
-	/* Mutex names starting with '.' are not tracked. They are assumed
-	to be diagnostic mutexes used in debugging. */
-	latch_meta[LATCH_ID_RW_LOCK_DEBUG] =
-		LATCH_ADD_MUTEX(RW_LOCK_DEBUG,
-			SYNC_NO_ORDER_CHECK,
-			rw_lock_debug_mutex_key);
-#endif /* UNIV_DEBUG */
 
 	LATCH_ADD_MUTEX(RTR_ACTIVE_MUTEX, SYNC_ANY_LATCH,
 			rtr_active_mutex_key);
