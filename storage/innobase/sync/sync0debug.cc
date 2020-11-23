@@ -446,7 +446,6 @@ LatchDebug::LatchDebug()
 	m_mutex.init();
 
 	LEVEL_MAP_INSERT(SYNC_UNKNOWN);
-	LEVEL_MAP_INSERT(SYNC_MUTEX);
 	LEVEL_MAP_INSERT(RW_LOCK_SX);
 	LEVEL_MAP_INSERT(RW_LOCK_X_WAIT);
 	LEVEL_MAP_INSERT(RW_LOCK_S);
@@ -852,7 +851,6 @@ LatchDebug::check_order(
 		basic_check(latches, level, SYNC_DICT);
 		break;
 
-	case SYNC_MUTEX:
 	case SYNC_UNKNOWN:
 	case SYNC_LEVEL_VARYING:
 	case RW_LOCK_X:
@@ -1242,9 +1240,6 @@ sync_latch_meta_init()
 	LATCH_ADD_MUTEX(PAGE_ZIP_STAT_PER_INDEX, SYNC_ANY_LATCH,
 			page_zip_stat_per_index_mutex_key);
 
-	LATCH_ADD_MUTEX(SYNC_ARRAY_MUTEX, SYNC_NO_ORDER_CHECK,
-			sync_array_mutex_key);
-
 	LATCH_ADD_MUTEX(ROW_DROP_LIST, SYNC_NO_ORDER_CHECK,
 			row_drop_list_mutex_key);
 
@@ -1322,8 +1317,6 @@ sync_check_init()
 
 	ut_d(LatchDebug::init());
 
-	sync_array_init();
-
 	ut_d(sync_check_enable());
 }
 
@@ -1332,8 +1325,6 @@ void
 sync_check_close()
 {
 	ut_d(LatchDebug::shutdown());
-
-	sync_array_close();
 
 	sync_latch_meta_destroy();
 }

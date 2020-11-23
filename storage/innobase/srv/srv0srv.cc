@@ -1308,8 +1308,7 @@ void srv_monitor_task(void*)
 			/* Reset mutex_skipped counter everytime
 			srv_print_innodb_monitor changes. This is to
 			ensure we will not be blocked by lock_sys.mutex
-			for short duration information printing,
-			such as requested by sync_array_print_long_waits() */
+			for short duration information printing */
 			if (!monitor_state.last_srv_print_monitor) {
 				monitor_state.mutex_skipped = 0;
 				monitor_state.last_srv_print_monitor = true;
@@ -1356,16 +1355,17 @@ too long. These can be used to track bugs which cause hangs.
 */
 void srv_error_monitor_task(void*)
 {
+#if 0 /* FIXME */
 	/* number of successive fatal timeouts observed */
 	static ulint		fatal_cnt;
-	static lsn_t		old_lsn = recv_sys.recovered_lsn;
 	/* longest waiting thread for a semaphore */
 	os_thread_id_t	waiter;
 	static os_thread_id_t	old_waiter = os_thread_get_curr_id();
-	/* the semaphore that is being waited for */
-	const void*	sema		= NULL;
-	static const void*	old_sema	= NULL;
-
+	/* the latch that is being waited for */
+	const rw_lock_t* latch= nullptr;
+	static const rw_lock_t* old_latch;
+#endif
+	static lsn_t		old_lsn;
 	ut_ad(!srv_read_only_mode);
 
 	/* Try to track a strange bug reported by Harald Fuchs and others,
@@ -1386,8 +1386,9 @@ void srv_error_monitor_task(void*)
 	eviction policy. */
 	buf_LRU_stat_update();
 
-	if (sync_array_print_long_waits(&waiter, &sema)
-	    && sema == old_sema && os_thread_eq(waiter, old_waiter)) {
+#if 0 /* FIXME */
+	if (sync_array_print_long_waits(&waiter, &latch)
+	    && latch == old_latch && os_thread_eq(waiter, old_waiter)) {
 #ifdef WITH_INNODB_DISALLOW_WRITES
 	  if (UNIV_LIKELY(!innodb_disallow_writes)) {
 #endif /* WITH_INNODB_DISALLOW_WRITES */
@@ -1409,8 +1410,9 @@ void srv_error_monitor_task(void*)
 	} else {
 		fatal_cnt = 0;
 		old_waiter = waiter;
-		old_sema = sema;
+		old_latch = latch;
 	}
+#endif
 }
 
 /******************************************************************//**
