@@ -84,11 +84,7 @@ Terminate iteration if the functor returns true.
 bool
 sync_check_iterate(const sync_check_functor_t& functor);
 
-/** Acquires the debug mutex. We cannot use the mutex defined in sync0sync,
-because the debug mutex is also acquired in sync0arr while holding the OS
-mutex protecting the sync array, and the ordinary mutex_enter might
-recursively call routines in sync0arr, leading to a deadlock on the OS
-mutex. */
+/** Acquires the debug mutex. */
 void
 rw_lock_debug_mutex_enter();
 
