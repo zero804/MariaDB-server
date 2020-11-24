@@ -2710,6 +2710,7 @@ sub setup_vardir() {
              <$bindir/sql/*.so>)
         {
           my $pname=basename($_);
+          mtr_report("Found plugin $pname");
           if ($opt_use_copy)
           {
             copy rel2abs($_), "$plugindir/$pname";
