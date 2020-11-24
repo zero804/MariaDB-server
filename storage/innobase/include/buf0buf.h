@@ -433,30 +433,11 @@ buf_block_get_modify_clock(
 	buf_block_t*	block);	/*!< in: block */
 /*******************************************************************//**
 Increments the bufferfix count. */
-UNIV_INLINE
-void
-buf_block_buf_fix_inc_func(
-/*=======================*/
-# ifdef UNIV_DEBUG
-	const char*	file,	/*!< in: file name */
-	unsigned	line,	/*!< in: line */
-# endif /* UNIV_DEBUG */
-	buf_block_t*	block)	/*!< in/out: block to bufferfix */
-	MY_ATTRIBUTE((nonnull));
+# define buf_block_buf_fix_inc(block) (block)->fix()
 
-# ifdef UNIV_DEBUG
-/** Increments the bufferfix count.
-@param[in,out]	b	block to bufferfix
-@param[in]	f	file name where requested
-@param[in]	l	line number where requested */
-#  define buf_block_buf_fix_inc(b,f,l) buf_block_buf_fix_inc_func(f,l,b)
-# else /* UNIV_DEBUG */
-/** Increments the bufferfix count.
-@param[in,out]	b	block to bufferfix
-@param[in]	f	file name where requested
-@param[in]	l	line number where requested */
-#  define buf_block_buf_fix_inc(b,f,l) buf_block_buf_fix_inc_func(b)
-# endif /* UNIV_DEBUG */
+/*******************************************************************//**
+Decrements the bufferfix count. */
+# define buf_block_buf_fix_dec(block) (block)->unfix()
 #endif /* !UNIV_INNOCHECKSUM */
 
 /** Check if a buffer is all zeroes.
@@ -1044,8 +1025,8 @@ struct buf_block_t{
 					is of size srv_page_size, and
 					aligned to an address divisible by
 					srv_page_size */
-	rw_lock_t	lock;		/*!< read-write lock of the buffer
-					frame */
+  /** read-write lock covering frame */
+  sux_lock lock;
 #ifdef UNIV_DEBUG
   /** whether page.list is in buf_pool.withdraw
   ((state() == BUF_BLOCK_NOT_USED)) and the buffer pool is being shrunk;
@@ -1169,22 +1150,12 @@ struct buf_block_t{
 # define assert_block_ahi_empty_on_init(block) /* nothing */
 # define assert_block_ahi_valid(block) /* nothing */
 #endif /* BTR_CUR_HASH_ADAPT */
-# ifdef UNIV_DEBUG
-	/** @name Debug fields */
-	/* @{ */
-	rw_lock_t	debug_latch;	/*!< in the debug version, each thread
-					which bufferfixes the block acquires
-					an s-latch here; so we can use the
-					debug utilities in sync0rw */
-	/* @} */
-# endif
   void fix() { page.fix(); }
   uint32_t unfix()
   {
     ut_ad(page.buf_fix_count() || page.io_fix() != BUF_IO_NONE ||
           page.state() == BUF_BLOCK_ZIP_PAGE ||
-          !rw_lock_own_flagged(&lock, RW_LOCK_FLAG_X | RW_LOCK_FLAG_S |
-                               RW_LOCK_FLAG_SX));
+          !lock.have_any());
     return page.unfix();
   }
 
@@ -1557,7 +1528,7 @@ public:
   inline buf_block_t *block_from_ahi(const byte *ptr) const;
 #endif /* BTR_CUR_HASH_ADAPT */
 
-  bool is_block_lock(const rw_lock_t *l) const
+  bool is_block_lock(const sux_lock *l) const
   { return is_block_field(static_cast<const void*>(l)); }
 
   /**

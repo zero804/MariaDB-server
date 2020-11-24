@@ -48,7 +48,6 @@ Created 11/5/1995 Heikki Tuuri
 #include "buf0buddy.h"
 #include "buf0dblwr.h"
 #include "lock0lock.h"
-#include "sync0rw.h"
 #include "btr0sea.h"
 #include "ibuf0ibuf.h"
 #include "trx0undo.h"
@@ -1216,10 +1215,7 @@ buf_block_init(buf_block_t* block, byte* frame)
 
 	page_zip_des_init(&block->page.zip);
 
-	block->lock.create(PFS_NOT_INSTRUMENTED, SYNC_LEVEL_VARYING);
-
-	ut_d(block->debug_latch.create(PFS_NOT_INSTRUMENTED,
-				       SYNC_LEVEL_VARYING));
+	block->lock.init();
 }
 
 /** Allocate a chunk of buffer frames.
@@ -1356,7 +1352,6 @@ inline const buf_block_t *buf_pool_t::chunk_t::not_freed() const
 static void buf_block_free_mutexes(buf_block_t* block)
 {
 	block->lock.free();
-	ut_d(block->debug_latch.free());
 }
 
 /** Create the hash table.
@@ -2505,13 +2500,11 @@ void buf_page_free(const page_id_t page_id,
   }
 
 
-  block->fix();
+  buf_block_buf_fix_inc(block);
   ut_ad(block->page.buf_fix_count());
-  ut_ad(rw_lock_s_lock_nowait(&block->debug_latch, file, line));
 
-  mtr_memo_type_t fix_type= MTR_MEMO_PAGE_X_FIX;
-  rw_lock_x_lock_inline(&block->lock, 0, file, line);
-  mtr_memo_push(mtr, block, fix_type);
+  mtr->memo_push(block, MTR_MEMO_PAGE_X_FIX);
+  block->lock.x_lock(file, line);
 
   block->page.status= buf_page_t::FREED;
   buf_block_dbg_add_level(block, SYNC_NO_ORDER_CHECK);
@@ -2573,9 +2566,6 @@ err_exit:
   ut_ad(!buf_pool.watch_is_sentinel(*bpage));
 
   switch (bpage->state()) {
-  case BUF_BLOCK_ZIP_PAGE:
-    bpage->fix();
-    goto got_block;
   case BUF_BLOCK_FILE_PAGE:
     /* Discard the uncompressed page frame if possible. */
     if (!discard_attempted)
@@ -2588,9 +2578,9 @@ err_exit:
       mysql_mutex_unlock(&buf_pool.mutex);
       goto lookup;
     }
-
-    buf_block_buf_fix_inc(reinterpret_cast<buf_block_t*>(bpage),
-                          __FILE__, __LINE__);
+    /* fall through */
+  case BUF_BLOCK_ZIP_PAGE:
+    bpage->fix();
     goto got_block;
   default:
     break;
@@ -2758,8 +2748,8 @@ buf_wait_for_read(
 	added to the page hashtable. */
 
 	while (block->page.io_fix() == BUF_IO_READ) {
-		rw_lock_s_lock(&block->lock);
-		rw_lock_s_unlock(&block->lock);
+		block->lock.s_lock();
+		block->lock.s_unlock();
 	}
 }
 
@@ -2779,22 +2769,22 @@ static void buf_defer_drop_ahi(buf_block_t *block, mtr_memo_type_t fix_type)
     break;
   case MTR_MEMO_PAGE_S_FIX:
     /* Temporarily release our S-latch. */
-    rw_lock_s_unlock(&block->lock);
-    rw_lock_x_lock(&block->lock);
+    block->lock.s_unlock();
+    block->lock.x_lock(__FILE__, __LINE__);
     if (dict_index_t *index= block->index)
       if (index->freed())
         btr_search_drop_page_hash_index(block);
-    rw_lock_x_unlock(&block->lock);
-    rw_lock_s_lock(&block->lock);
+    block->lock.x_unlock();
+    block->lock.s_lock();
     break;
   case MTR_MEMO_PAGE_SX_FIX:
-    rw_lock_sx_unlock(&block->lock);
-    rw_lock_x_lock(&block->lock);
+    block->lock.u_unlock();
+    block->lock.x_lock(__FILE__, __LINE__);
     if (dict_index_t *index= block->index)
       if (index->freed())
         btr_search_drop_page_hash_index(block);
-    rw_lock_x_unlock(&block->lock);
-    rw_lock_sx_lock(&block->lock);
+    block->lock.u_lock();
+    block->lock.x_unlock();
     break;
   default:
     ut_ad(fix_type == MTR_MEMO_PAGE_X_FIX);
@@ -2823,17 +2813,17 @@ static buf_block_t* buf_page_mtr_lock(buf_block_t *block,
     fix_type= MTR_MEMO_BUF_FIX;
     goto done;
   case RW_S_LATCH:
-    rw_lock_s_lock_inline(&block->lock, 0, file, line);
     fix_type= MTR_MEMO_PAGE_S_FIX;
+    block->lock.s_lock(file, line);
     break;
   case RW_SX_LATCH:
-    rw_lock_sx_lock_inline(&block->lock, 0, file, line);
     fix_type= MTR_MEMO_PAGE_SX_FIX;
+    block->lock.u_lock(file, line);
     break;
   default:
     ut_ad(rw_latch == RW_X_LATCH);
-    rw_lock_x_lock_inline(&block->lock, 0, file, line);
     fix_type= MTR_MEMO_PAGE_X_FIX;
+    block->lock.x_lock(file, line);
     break;
   }
 
@@ -3214,7 +3204,7 @@ evict_from_pool:
 		buf_unzip_LRU_add_block(block, FALSE);
 
 		block->page.set_io_fix(BUF_IO_READ);
-		rw_lock_x_lock_inline(&block->lock, 0, file, line);
+		block->lock.x_lock(file, line);
 
 		MEM_UNDEFINED(bpage, sizeof *bpage);
 
@@ -3235,7 +3225,7 @@ evict_from_pool:
 		buf_pool.mutex. */
 
 		if (!buf_zip_decompress(block, false)) {
-			rw_lock_x_unlock(&fix_block->lock);
+			fix_block->lock.x_unlock();
 			fix_block->page.io_unfix();
 			fix_block->unfix();
 			--buf_pool.n_pend_unzip;
@@ -3246,7 +3236,7 @@ evict_from_pool:
 			return NULL;
 		}
 
-		rw_lock_x_unlock(&block->lock);
+		block->lock.x_unlock();
 		fix_block->page.io_unfix();
 		--buf_pool.n_pend_unzip;
 		break;
@@ -3317,10 +3307,6 @@ re_evict:
 
 	ut_ad(fix_block->page.buf_fix_count());
 
-	/* We have already buffer fixed the page, and we are committed to
-	returning this page to the caller. Register for debugging. */
-	ut_ad(rw_lock_s_lock_nowait(&fix_block->debug_latch, file, line));
-
 	/* While tablespace is reinited the indexes are already freed but the
 	blocks related to it still resides in buffer pool. Trying to remove
 	such blocks from buffer pool would invoke removal of AHI entries
@@ -3348,8 +3334,7 @@ re_evict:
 	buf_wait_for_read(fix_block);
 
 	if (fix_block->page.id() != page_id) {
-		fix_block->unfix();
-		ut_d(rw_lock_s_unlock(&fix_block->debug_latch));
+		buf_block_buf_fix_dec(fix_block);
 
 		if (err) {
 			*err = DB_PAGE_CORRUPTED;
@@ -3362,7 +3347,7 @@ re_evict:
 	    && allow_ibuf_merge
 	    && fil_page_get_type(fix_block->frame) == FIL_PAGE_INDEX
 	    && page_is_leaf(fix_block->frame)) {
-		rw_lock_x_lock_inline(&fix_block->lock, 0, file, line);
+		fix_block->lock.x_lock(file, line);
 
 		if (fix_block->page.ibuf_exist) {
 			fix_block->page.ibuf_exist = false;
@@ -3373,7 +3358,7 @@ re_evict:
 		if (rw_latch == RW_X_LATCH) {
 			mtr->memo_push(fix_block, MTR_MEMO_PAGE_X_FIX);
 		} else {
-			rw_lock_x_unlock(&fix_block->lock);
+			fix_block->lock.x_unlock();
 			goto get_latch;
 		}
 	} else {
@@ -3421,8 +3406,7 @@ buf_page_get_gen(
 {
   if (buf_block_t *block= recv_sys.recover(page_id))
   {
-    block->fix();
-    ut_ad(rw_lock_s_lock_nowait(&block->debug_latch, file, line));
+    buf_block_buf_fix_inc(block);
     if (err)
       *err= DB_SUCCESS;
     const bool must_merge= allow_ibuf_merge &&
@@ -3432,7 +3416,7 @@ buf_page_get_gen(
     else if (must_merge && fil_page_get_type(block->frame) == FIL_PAGE_INDEX &&
 	     page_is_leaf(block->frame))
     {
-      rw_lock_x_lock_inline(&block->lock, 0, file, line);
+      block->lock.x_lock(file, line);
       block->page.ibuf_exist= false;
       ibuf_merge_or_delete_for_page(block, page_id, block->zip_size());
 
@@ -3441,7 +3425,7 @@ buf_page_get_gen(
         mtr->memo_push(block, MTR_MEMO_PAGE_X_FIX);
 	return block;
       }
-      rw_lock_x_unlock(&block->lock);
+      block->lock.x_unlock();
     }
     block= buf_page_mtr_lock(block, rw_latch, mtr, file, line);
     return block;
@@ -3489,7 +3473,7 @@ buf_page_optimistic_get(
 		return(FALSE);
 	}
 
-	buf_block_buf_fix_inc(block, file, line);
+	buf_block_buf_fix_inc(block);
 	hash_lock->read_unlock();
 
 	block->page.set_accessed();
@@ -3502,11 +3486,10 @@ buf_page_optimistic_get(
 
 	if (rw_latch == RW_S_LATCH) {
 		fix_type = MTR_MEMO_PAGE_S_FIX;
-		success = rw_lock_s_lock_nowait(&block->lock, file, line);
+		success = block->lock.s_lock_try();
 	} else {
 		fix_type = MTR_MEMO_PAGE_X_FIX;
-		success = rw_lock_x_lock_func_nowait_inline(
-			&block->lock, file, line);
+		success = block->lock.x_lock_try(file, line);
 	}
 
 	ut_ad(id == block->page.id());
@@ -3521,9 +3504,9 @@ buf_page_optimistic_get(
 		buf_block_dbg_add_level(block, SYNC_NO_ORDER_CHECK);
 
 		if (rw_latch == RW_S_LATCH) {
-			rw_lock_s_unlock(&block->lock);
+			block->lock.s_unlock();
 		} else {
-			rw_lock_x_unlock(&block->lock);
+			block->lock.x_unlock();
 		}
 
 		buf_block_buf_fix_dec(block);
@@ -3574,16 +3557,16 @@ buf_page_try_get_func(
   }
 
   buf_block_t *block= reinterpret_cast<buf_block_t*>(bpage);
-  buf_block_buf_fix_inc(block, file, line);
+  buf_block_buf_fix_inc(block);
   hash_lock->read_unlock();
 
   mtr_memo_type_t fix_type= MTR_MEMO_PAGE_S_FIX;
-  if (!rw_lock_s_lock_nowait(&block->lock, file, line))
+  if (!block->lock.s_lock_try())
   {
-    /* Let us try to get an X-latch. If the current thread
+    /* Let us try to get an SX-latch. If the current thread
     is holding an X-latch on the page, we cannot get an S-latch. */
-    fix_type= MTR_MEMO_PAGE_X_FIX;
-    if (!rw_lock_x_lock_func_nowait_inline(&block->lock, file, line))
+    fix_type= MTR_MEMO_PAGE_SX_FIX;
+    if (!block->lock.u_lock_try())
     {
       buf_block_buf_fix_dec(block);
       return nullptr;
@@ -3658,8 +3641,8 @@ loop:
     case BUF_BLOCK_FILE_PAGE:
       if (!mtr->have_x_latch(*block))
       {
-        buf_block_buf_fix_inc(block, __FILE__, __LINE__);
-        while (!rw_lock_x_lock_nowait(&block->lock))
+        buf_block_buf_fix_inc(block);
+        while (!block->lock.x_lock_try(__FILE__, __LINE__))
         {
           /* Wait for buf_page_write_complete() to release block->lock.
           We must not hold buf_pool.mutex while waiting. */
@@ -3695,7 +3678,7 @@ loop:
         goto loop;
       }
 
-      rw_lock_x_lock(&free_block->lock);
+      free_block->lock.x_lock(__FILE__, __LINE__);
       buf_relocate(&block->page, &free_block->page);
       buf_flush_relocate_on_flush_list(&block->page, &free_block->page);
 
@@ -3704,7 +3687,7 @@ loop:
       hash_lock->write_unlock();
       buf_page_free_descriptor(&block->page);
       block= free_block;
-      buf_block_buf_fix_inc(block, __FILE__, __LINE__);
+      buf_block_buf_fix_inc(block);
       mtr_memo_push(mtr, block, MTR_MEMO_PAGE_X_FIX);
       break;
     }
@@ -3733,9 +3716,7 @@ loop:
 
   block= free_block;
 
-  /* Duplicate buf_block_buf_fix_inc_func() */
   ut_ad(block->page.buf_fix_count() == 1);
-  ut_ad(rw_lock_s_lock_nowait(&block->debug_latch, __FILE__, __LINE__));
 
   /* The block must be put to the LRU list */
   buf_LRU_add_block(&block->page, false);
@@ -3745,7 +3726,7 @@ loop:
   ut_d(block->page.in_page_hash= true);
   HASH_INSERT(buf_page_t, hash, &buf_pool.page_hash, fold, &block->page);
 
-  rw_lock_x_lock(&block->lock);
+  block->lock.x_lock(__FILE__, __LINE__);
   if (UNIV_UNLIKELY(zip_size))
   {
     /* Prevent race conditions during buf_buddy_alloc(), which may
@@ -3932,9 +3913,7 @@ ATTRIBUTE_COLD void buf_pool_t::corrupted_evict(buf_page_t *bpage)
   bpage->set_corrupt_id();
 
   if (bpage->state() == BUF_BLOCK_FILE_PAGE)
-    rw_lock_x_unlock_gen(&reinterpret_cast<buf_block_t*>(bpage)->lock,
-                         BUF_IO_READ);
-
+    reinterpret_cast<buf_block_t*>(bpage)->lock.x_unlock();
   bpage->io_unfix();
 
   /* remove from LRU and page_hash */
@@ -4205,7 +4184,7 @@ release_page:
   did the locking, we use a pass value != 0 in unlock, which simply
   removes the newest lock debug record, without checking the thread id. */
   if (bpage->state() == BUF_BLOCK_FILE_PAGE)
-    rw_lock_x_unlock_gen(&((buf_block_t*) bpage)->lock, BUF_IO_READ);
+    reinterpret_cast<buf_block_t*>(bpage)->lock.x_unlock();
   bpage->io_unfix();
 
   ut_d(auto n=) buf_pool.n_pend_reads--;

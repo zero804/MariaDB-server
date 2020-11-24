@@ -402,14 +402,14 @@ rtr_pcur_getnext_from_path(
 			lock_mutex_exit();
 
 			if (rw_latch == RW_NO_LATCH) {
-				rw_lock_s_lock(&(block->lock));
+				block->lock.s_lock(__FILE__, __LINE__);
 			}
 
 			lock_prdt_lock(block, &prdt, index, LOCK_S,
 				       LOCK_PREDICATE, btr_cur->rtr_info->thr);
 
 			if (rw_latch == RW_NO_LATCH) {
-				rw_lock_s_unlock(&(block->lock));
+				block->lock.s_unlock();
 			}
 		}
 
@@ -461,8 +461,7 @@ rtr_pcur_getnext_from_path(
 		mtr_commit(mtr);
 		mtr_start(mtr);
 	} else if (!index_locked) {
-		mtr_memo_release(mtr, dict_index_get_lock(index),
-				 MTR_MEMO_X_LOCK);
+		mtr_memo_release(mtr, &index->lock, MTR_MEMO_X_LOCK);
 	}
 
 	return(found);
@@ -953,8 +952,7 @@ rtr_create_rtr_info(
 						     + UNIV_PAGE_SIZE_MAX + 1);
 		mutex_create(LATCH_ID_RTR_MATCH_MUTEX,
 			     &rtr_info->matches->rtr_match_mutex);
-		rtr_info->matches->block.lock.create(PFS_NOT_INSTRUMENTED,
-						     SYNC_LEVEL_VARYING);
+		rtr_info->matches->block.lock.init();
 	}
 
 	rtr_info->path = UT_NEW_NOKEY(rtr_node_path_t());

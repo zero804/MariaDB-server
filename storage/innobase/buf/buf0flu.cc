@@ -358,7 +358,11 @@ void buf_page_write_complete(const IORequest &request)
   did the locking, we use a pass value != 0 in unlock, which simply
   removes the newest lock debug record, without checking the thread id. */
   if (bpage->state() == BUF_BLOCK_FILE_PAGE)
-    rw_lock_sx_unlock_gen(&((buf_block_t*) bpage)->lock, BUF_IO_WRITE);
+  {
+    buf_block_t *block= reinterpret_cast<buf_block_t*>(bpage);
+    ut_d(block->lock.claim_ownership());
+    block->lock.u_unlock();
+  }
 
   buf_pool.stat.n_pages_written++;
 
@@ -777,8 +781,7 @@ static void buf_release_freed_page(buf_page_t *bpage)
   mysql_mutex_unlock(&buf_pool.flush_list_mutex);
 
   if (uncompressed)
-    rw_lock_sx_unlock_gen(&reinterpret_cast<buf_block_t*>(bpage)->lock,
-                          BUF_IO_WRITE);
+    reinterpret_cast<buf_block_t*>(bpage)->lock.u_unlock();
 
   buf_LRU_free_page(bpage, true);
   mysql_mutex_unlock(&buf_pool.mutex);
@@ -800,14 +803,14 @@ static bool buf_flush_page(buf_page_t *bpage, bool lru, fil_space_t *space)
         space->atomic_write_supported);
   ut_ad(space->referenced());
 
-  rw_lock_t *rw_lock;
+  sux_lock *rw_lock;
 
   if (bpage->state() != BUF_BLOCK_FILE_PAGE)
     rw_lock= nullptr;
   else
   {
     rw_lock= &reinterpret_cast<buf_block_t*>(bpage)->lock;
-    if (!rw_lock_sx_lock_nowait(rw_lock, BUF_IO_WRITE))
+    if (!rw_lock->u_lock_try())
       return false;
   }
 
@@ -855,7 +858,7 @@ static bool buf_flush_page(buf_page_t *bpage, bool lru, fil_space_t *space)
     if (UNIV_UNLIKELY(lsn > log_sys.get_flushed_lsn()))
     {
       if (rw_lock)
-        rw_lock_sx_unlock_gen(rw_lock, BUF_IO_WRITE);
+        rw_lock->u_unlock();
       mysql_mutex_lock(&buf_pool.mutex);
       bpage->set_io_fix(BUF_IO_NONE);
       return false;
@@ -1206,14 +1209,14 @@ static void buf_flush_discard_page(buf_page_t *bpage)
   ut_ad(bpage->in_file());
   ut_ad(bpage->oldest_modification());
 
-  rw_lock_t *rw_lock;
+  sux_lock *rw_lock;
 
   if (bpage->state() != BUF_BLOCK_FILE_PAGE)
     rw_lock= nullptr;
   else
   {
     rw_lock= &reinterpret_cast<buf_block_t*>(bpage)->lock;
-    if (!rw_lock_sx_lock_nowait(rw_lock, 0))
+    if (!rw_lock->u_lock_try())
       return;
   }
 
@@ -1223,7 +1226,7 @@ static void buf_flush_discard_page(buf_page_t *bpage)
   mysql_mutex_unlock(&buf_pool.flush_list_mutex);
 
   if (rw_lock)
-    rw_lock_sx_unlock(rw_lock);
+    rw_lock->u_unlock();
 
   buf_LRU_free_page(bpage, true);
 }

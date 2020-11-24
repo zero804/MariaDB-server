@@ -1164,6 +1164,38 @@ rw_lock_debug_mutex_exit()
 {
 	mysql_mutex_unlock(&rw_lock_debug_mutex);
 }
+
+std::string sux_lock::to_string() const
+{
+  ut_ad(created());
+  std::ostringstream msg;
+  const os_thread_id_t id= os_thread_get_curr_id();
+
+  msg << "RW-LATCH: thread id " << os_thread_pf(id)
+      << " addr: " << this
+      << " Locked from: ";
+
+  rw_lock_debug_mutex_enter();
+
+#if 0 /* FIXME */
+  bool written= false;
+
+  for (rw_lock_debug_t *info= UT_LIST_GET_FIRST(debug_list); info;
+       info= UT_LIST_GET_NEXT(list, info))
+  {
+    if (info->thread_id != id)
+      continue;
+
+    if (written)
+      msg << ", ";
+    written = true;
+    msg << info->file_name << ":" << info->line;
+  }
+#endif
+
+  rw_lock_debug_mutex_exit();
+  return msg.str();
+}
 #endif /* UNIV_DEBUG */
 
 /* Meta data for all the InnoDB latches. If the latch is not in recorded
@@ -1355,4 +1387,3 @@ sync_check_close()
 
 	sync_latch_meta_destroy();
 }
-
