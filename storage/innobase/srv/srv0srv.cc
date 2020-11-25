@@ -1362,8 +1362,8 @@ void srv_error_monitor_task(void*)
 	os_thread_id_t	waiter;
 	static os_thread_id_t	old_waiter = os_thread_get_curr_id();
 	/* the latch that is being waited for */
-	const rw_lock_t* latch= nullptr;
-	static const rw_lock_t* old_latch;
+	const sux_lock* latch= nullptr;
+	static const sux_lock* old_latch;
 #endif
 	static lsn_t		old_lsn;
 	ut_ad(!srv_read_only_mode);

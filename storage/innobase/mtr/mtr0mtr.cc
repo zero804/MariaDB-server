@@ -1036,7 +1036,7 @@ struct FlaggedCheck {
 				const_cast<void*>(m_ptr))->lock;
 			ut_ad(rw_lock_own_flagged(lock, flags));
 		} else {
-			sux_lock* lock = static_cast<rw_lock_t*>(
+			sux_lock* lock = static_cast<sux_lock*>(
 				const_cast<void*>(m_ptr));
 			ut_ad(rw_lock_own_flagged(lock, m_flags >> 5));
 		}
