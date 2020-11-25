@@ -21,7 +21,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "my_atomic_wrapper.h"
 #include "os0thread.h"
 
-#ifdef UNIV_PFS_RWLOCK
+#if 0 // FIXME: defined UNIV_PFS_RWLOCK
 # define SUX_LOCK_INIT(key, level) init(key, level)
 #else
 # define SUX_LOCK_INIT(key, level) init(level)
@@ -33,17 +33,17 @@ as well as recursive U and X latch acquisition */
 class sux_lock ut_d(: public latch_t)
 {
   /** The first lock component for U and X modes. Only acquired in X mode. */
-  srw_lock write_lock;
+  srw_lock_low write_lock;
   /** The owner of the U or X lock (0 if none); protected by write_lock */
   Atomic_relaxed<os_thread_id_t> writer;
   /** Number of recursive U or X locks. Protected by write_lock.
   In debug builds, this is incremented also for the first lock request. */
   uint32_t recursive;
   /** The second component for U and X modes; the only component for S mode */
-  srw_lock read_lock;
+  srw_lock_low read_lock;
 #ifdef UNIV_DEBUG
   /** debug_list lock. Only acquired in X mode. */
-  srw_lock debug_lock;
+  srw_lock_low debug_lock;
 #endif
 
   /** The multiplier in recursive for X locks */
@@ -62,11 +62,11 @@ public:
   void SUX_LOCK_INIT(mysql_pfs_key_t key= PFS_NOT_INSTRUMENTED,
                      latch_level_t level= SYNC_LEVEL_VARYING)
   {
-    write_lock.SRW_LOCK_INIT(PFS_NOT_INSTRUMENTED);
+    write_lock.init();
     writer= 0;
     recursive= 0;
-    read_lock.SRW_LOCK_INIT(key);
-    ut_d(debug_lock.SRW_LOCK_INIT(PFS_NOT_INSTRUMENTED));
+    read_lock.init();
+    ut_d(debug_lock.init());
     ut_d(m_rw_lock= true);
     //ut_d(UT_LIST_INIT(debug_list, &rw_lock_debug_t::list));
     ut_d(m_id= sync_latch_get_id(sync_latch_get_name(level)));

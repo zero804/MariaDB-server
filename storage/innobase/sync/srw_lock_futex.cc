@@ -33,7 +33,7 @@ int srw_lock_dummy_function() { return 0; }
 
 /** Wait for a read lock.
 @param lock word value from a failed read_trylock() */
-void srw_lock::read_lock(uint32_t l)
+void srw_lock_low::read_lock(uint32_t l)
 {
   do
   {
@@ -56,7 +56,7 @@ void srw_lock::read_lock(uint32_t l)
 }
 
 /** Wait for a write lock after a failed write_trylock() */
-void srw_lock::write_lock()
+void srw_lock_low::write_lock()
 {
   for (;;)
   {
@@ -87,20 +87,14 @@ void srw_lock::write_lock()
   }
 }
 
-void srw_lock::rd_unlock()
+void srw_lock_low::rd_unlock()
 {
-#ifdef UNIV_PFS_RWLOCK
-  if (pfs_psi) PSI_RWLOCK_CALL(unlock_rwlock)(pfs_psi);
-#endif
   if (read_unlock())
     syscall(SYS_futex, word(), FUTEX_WAKE_PRIVATE, 1, nullptr, nullptr, 0);
 }
 
-void srw_lock::wr_unlock()
+void srw_lock_low::wr_unlock()
 {
-#ifdef UNIV_PFS_RWLOCK
-  if (pfs_psi) PSI_RWLOCK_CALL(unlock_rwlock)(pfs_psi);
-#endif
   write_unlock();
   syscall(SYS_futex, word(), FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
 }

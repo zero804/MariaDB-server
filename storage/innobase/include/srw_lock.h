@@ -38,26 +38,24 @@ this program; if not, write to the Free Software Foundation, Inc.,
 # define SRW_LOCK_INIT(key) init()
 #endif
 
-class srw_lock final
+/** Slim reader-writer lock with no recursion */
+class srw_lock_low final
 #if defined __linux__ && !defined SRW_LOCK_DUMMY
   : protected rw_lock
 #endif
 {
 #if defined SRW_LOCK_DUMMY || (!defined _WIN32 && !defined __linux__)
-  mysql_rwlock_t lock;
+  rw_lock_t lock;
 public:
-  void SRW_LOCK_INIT(mysql_pfs_key_t key) { mysql_rwlock_init(key, &lock); }
-  void destroy() { mysql_rwlock_destroy(&lock); }
-  void rd_lock() { mysql_rwlock_rdlock(&lock); }
-  void rd_unlock() { mysql_rwlock_unlock(&lock); }
-  void wr_lock() { mysql_rwlock_wrlock(&lock); }
-  void wr_unlock() { mysql_rwlock_unlock(&lock); }
-  bool rd_lock_try() { return !mysql_rwlock_tryrdlock(&lock); }
-  bool wr_lock_try() { return !mysql_rwlock_trywrlock(&lock); }
+  void init() { my_rwlock_init(key, &lock); }
+  void destroy() { rwlock_destroy(&lock); }
+  void rd_lock() { rw_rdlock(&lock); }
+  void rd_unlock() { rw_unlock(&lock); }
+  void wr_lock() { rw_wrlock(&lock); }
+  void wr_unlock() { rw_unlock(&lock); }
+  bool rd_lock_try() { return !rw_tryrdlock(&lock); }
+  bool wr_lock_try() { return !rw_trywrlock(&lock); }
 #else
-# ifdef UNIV_PFS_RWLOCK
-  PSI_rwlock *pfs_psi;
-# endif
 # ifdef _WIN32
   SRWLOCK lock;
   bool read_trylock() { return TryAcquireSRWLockShared(&lock); }
@@ -74,26 +72,16 @@ public:
   void write_lock();
 public:
   /** needed for dict_index_t::clone() */
-  void operator=(const srw_lock &) {}
+  void operator=(const srw_lock_low &) {}
 # endif
 
 public:
-  void SRW_LOCK_INIT(mysql_pfs_key_t key)
+  void init()
   {
-# ifdef UNIV_PFS_RWLOCK
-    pfs_psi= PSI_RWLOCK_CALL(init_rwlock)(key, this);
-# endif
     IF_WIN(lock= SRWLOCK_INIT, static_assert(4 == sizeof(rw_lock), "ABI"));
   }
   void destroy()
   {
-# ifdef UNIV_PFS_RWLOCK
-    if (pfs_psi)
-    {
-      PSI_RWLOCK_CALL(destroy_rwlock)(pfs_psi);
-      pfs_psi= nullptr;
-    }
-# endif
     IF_WIN(, DBUG_ASSERT(!is_locked_or_waiting()));
   }
   bool rd_lock_try()
@@ -101,59 +89,94 @@ public:
   bool wr_lock_try() { return write_trylock(); }
   void rd_lock()
   {
-    IF_WIN(, uint32_t l);
-# ifdef UNIV_PFS_RWLOCK
-    if (read_trylock(IF_WIN(, l)))
-      return;
-    if (pfs_psi)
-    {
-      PSI_rwlock_locker_state state;
-      PSI_rwlock_locker *locker= PSI_RWLOCK_CALL(start_rwlock_rdwait)
-        (&state, pfs_psi, PSI_RWLOCK_READLOCK, __FILE__, __LINE__);
-      read_lock(IF_WIN(, l));
-      if (locker)
-        PSI_RWLOCK_CALL(end_rwlock_rdwait)(locker, 0);
-      return;
-    }
-# endif /* UNIV_PFS_RWLOCK */
-    IF_WIN(read_lock(), if (!read_trylock(l)) read_lock(l));
+    IF_WIN(read_lock(), uint32_t l; if (!read_trylock(l)) read_lock(l));
   }
   void wr_lock()
   {
-# ifdef UNIV_PFS_RWLOCK
-    if (write_trylock())
-      return;
-    if (pfs_psi)
-    {
-      PSI_rwlock_locker_state state;
-      PSI_rwlock_locker *locker= PSI_RWLOCK_CALL(start_rwlock_wrwait)
-        (&state, pfs_psi, PSI_RWLOCK_WRITELOCK, __FILE__, __LINE__);
-      write_lock();
-      if (locker)
-        PSI_RWLOCK_CALL(end_rwlock_rdwait)(locker, 0);
-      return;
-    }
-# endif /* UNIV_PFS_RWLOCK */
     IF_WIN(, if (!write_trylock())) write_lock();
   }
 #ifdef _WIN32
-  void rd_unlock()
-  {
-#ifdef UNIV_PFS_RWLOCK
-    if (pfs_psi) PSI_RWLOCK_CALL(unlock_rwlock)(pfs_psi);
-#endif
-    ReleaseSRWLockShared(&lock);
-  }
-  void wr_unlock()
-  {
-#ifdef UNIV_PFS_RWLOCK
-    if (pfs_psi) PSI_RWLOCK_CALL(unlock_rwlock)(pfs_psi);
-#endif
-    ReleaseSRWLockExclusive(&lock);
-  }
+  void rd_unlock() { ReleaseSRWLockShared(&lock); }
+  void wr_unlock() { ReleaseSRWLockExclusive(&lock); }
 #else
   void rd_unlock();
   void wr_unlock();
 #endif
 #endif
 };
+
+#ifndef UNIV_PFS_RWLOCK
+typedef srw_lock_low srw_lock;
+#else
+/** Slim reader-writer lock with optional PERFORMANCE_SCHEMA instrumentation */
+class srw_lock
+{
+  srw_lock_low lock;
+  PSI_rwlock *pfs_psi;
+
+public:
+  /** needed for dict_index_t::clone() */
+  void operator=(const srw_lock &) {}
+
+  void init(mysql_pfs_key_t key)
+  {
+    lock.init();
+    pfs_psi= PSI_RWLOCK_CALL(init_rwlock)(key, this);
+  }
+  void destroy()
+  {
+    if (pfs_psi)
+    {
+      PSI_RWLOCK_CALL(destroy_rwlock)(pfs_psi);
+      pfs_psi= nullptr;
+    }
+    lock.destroy();
+  }
+  void rd_lock()
+  {
+    if (pfs_psi)
+    {
+      if (lock.rd_lock_try())
+        return;
+      PSI_rwlock_locker_state state;
+      PSI_rwlock_locker *locker= PSI_RWLOCK_CALL(start_rwlock_rdwait)
+        (&state, pfs_psi, PSI_RWLOCK_READLOCK, __FILE__, __LINE__);
+      lock.rd_lock();
+      if (locker)
+        PSI_RWLOCK_CALL(end_rwlock_rdwait)(locker, 0);
+      return;
+    }
+    lock.rd_lock();
+  }
+  void rd_unlock()
+  {
+    if (pfs_psi)
+      PSI_RWLOCK_CALL(unlock_rwlock)(pfs_psi);
+    lock.rd_unlock();
+  }
+  void wr_lock()
+  {
+    if (pfs_psi)
+    {
+      if (lock.wr_lock_try())
+        return;
+      PSI_rwlock_locker_state state;
+      PSI_rwlock_locker *locker= PSI_RWLOCK_CALL(start_rwlock_wrwait)
+        (&state, pfs_psi, PSI_RWLOCK_WRITELOCK, __FILE__, __LINE__);
+      lock.wr_lock();
+      if (locker)
+        PSI_RWLOCK_CALL(end_rwlock_rdwait)(locker, 0);
+      return;
+    }
+    lock.wr_lock();
+  }
+  void wr_unlock()
+  {
+    if (pfs_psi)
+      PSI_RWLOCK_CALL(unlock_rwlock)(pfs_psi);
+    lock.wr_unlock();
+  }
+  bool rd_lock_try() { return lock.rd_lock_try(); }
+  bool wr_lock_try() { return lock.wr_lock_try(); }
+};
+#endif
