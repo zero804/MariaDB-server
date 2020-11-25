@@ -14679,6 +14679,7 @@ static int old_password_get_salt(const char *hash, size_t hash_length,
 {
   DBUG_ASSERT(*out_length >= SALT_LENGTH_323);
 
+
   if (hash_length != SCRAMBLED_PASSWORD_CHAR_LENGTH_323)
   {
     my_error(ER_PASSWD_LENGTH, MYF(0), SCRAMBLED_PASSWORD_CHAR_LENGTH_323);
