@@ -16,7 +16,7 @@
 
 
 #define PLUGIN_VERSION 0x104
-#define PLUGIN_STR_VERSION "1.4.10"
+#define PLUGIN_STR_VERSION "1.4.12"
 
 #define _my_thread_var loc_thread_var
 
@@ -140,6 +140,13 @@ static int loc_file_errno;
 #define logger_write loc_logger_write
 #define logger_rotate loc_logger_rotate
 #define logger_init_mutexts loc_logger_init_mutexts
+
+#ifndef HOSTNAME_LENGTH
+#define HOSTNAME_LENGTH 255
+#endif
+#ifndef USERNAME_CHAR_LENGTH
+#define USERNAME_CHAR_LENGTH 128
+#endif
 
 
 static size_t loc_write(File Filedes, const uchar *Buffer, size_t Count)
@@ -278,6 +285,7 @@ static my_off_t loc_tell(File fd)
 
 extern MYSQL_PLUGIN_IMPORT char server_version[];
 static const char *serv_ver= NULL;
+const char *(*thd_priv_host_ptr)(MYSQL_THD thd, size_t *length);
 static int started_mysql= 0;
 static int mysql_57_started= 0;
 static int debug_server_started= 0;
@@ -304,7 +312,7 @@ static char *big_buffer= NULL;
 static size_t big_buffer_alloced= 0;
 static unsigned int query_log_limit= 0;
 
-static char servhost[256];
+static char servhost[HOSTNAME_LENGTH+1];
 static uint servhost_len;
 static char *syslog_ident;
 static char syslog_ident_buffer[128]= "mysql-server_auditing";
@@ -316,9 +324,9 @@ struct connection_info
   unsigned long long query_id;
   char db[256];
   int db_length;
-  char user[64];
+  char user[USERNAME_CHAR_LENGTH+1];
   int user_length;
-  char host[64];
+  char host[HOSTNAME_LENGTH+1];
   int host_length;
   char ip[64];
   int ip_length;
@@ -327,9 +335,9 @@ struct connection_info
   char query_buffer[1024];
   time_t query_time;
   int log_always;
-  char proxy[64];
+  char proxy[USERNAME_CHAR_LENGTH+1];
   int proxy_length;
-  char proxy_host[64];
+  char proxy_host[HOSTNAME_LENGTH+1];
   int proxy_host_length;
 };
 
@@ -1146,7 +1154,7 @@ static void setup_connection_simple(struct connection_info *ci)
 #define MAX_HOSTNAME 61
 #define USERNAME_LENGTH 384
 
-static void setup_connection_connect(struct connection_info *cn,
+static void setup_connection_connect(MYSQL_THD thd,struct connection_info *cn,
     const struct mysql_event_connection *event)
 {
   cn->query_id= 0;
@@ -1164,17 +1172,25 @@ static void setup_connection_connect(struct connection_info *cn,
   cn->header= 0;
   if (event->proxy_user && event->proxy_user[0])
   {
-    const char *priv_host= event->proxy_user +
-            sizeof(char[MAX_HOSTNAME+USERNAME_LENGTH+5]);
+    const char *priv_host;
     size_t priv_host_length;
 
-    if (mysql_57_started)
+    if (thd_priv_host_ptr)
     {
-      priv_host+= sizeof(size_t);
-      priv_host_length= *(size_t *) (priv_host + MAX_HOSTNAME);
+      priv_host= (*thd_priv_host_ptr)(thd, &priv_host_length);
     }
     else
-      priv_host_length= strlen(priv_host);
+    {
+      priv_host= event->proxy_user +
+            sizeof(char[MAX_HOSTNAME+USERNAME_LENGTH+5]);
+      if (mysql_57_started)
+      {
+        priv_host+= sizeof(size_t);
+        priv_host_length= *(size_t *) (priv_host + MAX_HOSTNAME);
+      }
+      else
+        priv_host_length= strlen(priv_host);
+    }
 
 
     get_str_n(cn->proxy, &cn->proxy_length, sizeof(cn->proxy),
@@ -1948,7 +1964,7 @@ static struct connection_info ci_disconnect_buffer;
 #define AA_FREE_CONNECTION 1
 #define AA_CHANGE_USER 2
 
-static void update_connection_info(struct connection_info *cn,
+static void update_connection_info(MYSQL_THD thd, struct connection_info *cn,
     unsigned int event_class, const void *ev, int *after_action)
 {
   *after_action= 0;
@@ -2069,7 +2085,7 @@ static void update_connection_info(struct connection_info *cn,
     switch (event->event_subclass)
     {
       case MYSQL_AUDIT_CONNECTION_CONNECT:
-        setup_connection_connect(cn, event);
+        setup_connection_connect(thd, cn, event);
         if (event->status == 0 && event->proxy_user && event->proxy_user[0])
           log_proxy(cn, event);
         break;
@@ -2131,7 +2147,7 @@ void auditing(MYSQL_THD thd, unsigned int event_class, const void *ev)
     cn= get_loc_info(thd);
   }
 
-  update_connection_info(cn, event_class, ev, &after_action);
+  update_connection_info(thd, cn, event_class, ev, &after_action);
 
   if (!logging)
   {
@@ -2468,6 +2484,8 @@ static int server_audit_init(void *p __attribute__((unused)))
     }
     if (!my_hash_init_ptr)
       return 1;
+
+    thd_priv_host_ptr= dlsym(RTLD_DEFAULT, "thd_priv_host");
   }
 
   if(!(int_mysql_data_home= find_sym("mysql_data_home")))
