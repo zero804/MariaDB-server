@@ -10,3 +10,4 @@
 #
 ##############################################################################
 
+multi_pk : MDEV-24142 FIXME: assertion failure in lock_rec_free_all_from_discard_page_low()

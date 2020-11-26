@@ -3399,6 +3399,13 @@ buf_page_optimistic_get(
 	if (rw_latch == RW_S_LATCH) {
 		fix_type = MTR_MEMO_PAGE_S_FIX;
 		success = block->lock.s_lock_try();
+	} else if (block->lock.have_u_not_x()
+		   && block->lock.x_lock_upgraded(file, line)) {
+		mtr->page_lock_upgrade(*block);
+		ut_ad(id == block->page.id());
+		ut_ad(modify_clock == block->modify_clock);
+		buf_block_buf_fix_dec(block);
+		goto func_exit;
 	} else {
 		fix_type = MTR_MEMO_PAGE_X_FIX;
 		success = block->lock.x_lock_try(file, line);
@@ -3426,7 +3433,7 @@ buf_page_optimistic_get(
 	}
 
 	mtr_memo_push(mtr, block, fix_type);
-
+func_exit:
 #ifdef UNIV_DEBUG
 	if (!(++buf_dbg_counter % 5771)) buf_pool.validate();
 #endif /* UNIV_DEBUG */

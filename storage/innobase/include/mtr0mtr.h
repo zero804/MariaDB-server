@@ -324,6 +324,9 @@ public:
   void page_lock(buf_block_t *block, ulint rw_latch,
                  const char *file, unsigned line);
 
+  /** Upgrade U locks on a block to X */
+  void page_lock_upgrade(const buf_block_t &block);
+
   /** Check if we are holding tablespace latch
   @param space  tablespace to search for
   @param shared whether to look for shared latch, instead of exclusive

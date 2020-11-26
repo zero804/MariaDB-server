@@ -1004,6 +1004,30 @@ static void mtr_defer_drop_ahi(buf_block_t *block, mtr_memo_type_t fix_type)
 }
 #endif /* BTR_CUR_HASH_ADAPT */
 
+/** Upgrade U-latched pages to X */
+struct UpgradeX
+{
+  const buf_block_t &block;
+  UpgradeX(const buf_block_t &block) : block(block) {}
+  bool operator()(mtr_memo_slot_t *slot) const
+  {
+    if (slot->object == &block && (MTR_MEMO_PAGE_SX_FIX & slot->type))
+      slot->type= static_cast<mtr_memo_type_t>
+        (slot->type ^ (MTR_MEMO_PAGE_SX_FIX | MTR_MEMO_PAGE_X_FIX));
+    return true;
+  }
+};
+
+
+/** Upgrade U locks on a block to X */
+void mtr_t::page_lock_upgrade(const buf_block_t &block)
+{
+  m_memo.for_each_block(CIterate<UpgradeX>((UpgradeX(block))));
+#ifdef BTR_CUR_HASH_ADAPT
+  ut_ad(!block.index || !block.index->freed());
+#endif /* BTR_CUR_HASH_ADAPT */
+}
+
 /** Latch a buffer pool block.
 @param block    block to be latched
 @param rw_latch RW_S_LATCH, RW_SX_LATCH, RW_X_LATCH, RW_NO_LATCH
@@ -1029,8 +1053,12 @@ void mtr_t::page_lock(buf_block_t *block, ulint rw_latch,
   default:
     ut_ad(rw_latch == RW_X_LATCH);
     fix_type= MTR_MEMO_PAGE_X_FIX;
-    block->lock.x_lock(file, line);
-    break;
+    if (block->lock.x_lock_upgraded(file, line))
+    {
+      page_lock_upgrade(*block);
+      block->unfix();
+      return;
+    }
   }
 
 #ifdef BTR_CUR_HASH_ADAPT

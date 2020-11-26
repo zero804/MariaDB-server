@@ -175,11 +175,19 @@ public:
 
   /** @return whether the current thread is holding X or U latch */
   bool have_u_or_x() const
-  { return os_thread_get_curr_id() == writer.load(std::memory_order_relaxed); }
-#ifdef UNIV_DEBUG
+  {
+    if (os_thread_get_curr_id() != writer.load(std::memory_order_relaxed))
+      return false;
+    ut_ad(recursive);
+    return true;
+  }
+  /** @return whether the current thread is holding U but not X latch */
+  bool have_u_not_x() const
+  { return have_u_or_x() && !((recursive / RECURSIVE_X) & RECURSIVE_MAX); }
   /** @return whether the current thread is holding X latch */
   bool have_x() const
   { return have_u_or_x() && ((recursive / RECURSIVE_X) & RECURSIVE_MAX); }
+#ifdef UNIV_DEBUG
   /** @return whether the current thread is holding the latch */
   bool have_any() const { return have_u_or_x() /* FIXME */; }
 #endif
@@ -200,6 +208,39 @@ public:
   void u_lock(const char *, unsigned) { u_lock(); }
   /** Acquire an exclusive lock */
   void x_lock(const char *, unsigned, bool for_io= false) { x_lock(for_io); }
+  /** Acquire an exclusive lock or upgrade an update lock
+  @return whether U locks were upgraded to X */
+  bool x_lock_upgraded()
+  {
+    os_thread_id_t id= os_thread_get_curr_id();
+    if (writer.load(std::memory_order_relaxed) == id)
+    {
+      ut_ad(recursive);
+      static_assert(RECURSIVE_X == 1, "compatibility");
+      if (recursive & RECURSIVE_MAX)
+      {
+        writer_recurse<false>();
+        return false;
+      }
+      /* Upgrade the lock. */
+      read_lock.rd_unlock();
+      read_lock.wr_lock();
+      recursive/= RECURSIVE_U;
+      return true;
+    }
+    else
+    {
+      write_lock.wr_lock();
+      ut_ad(!recursive);
+      ut_d(recursive= RECURSIVE_X);
+      set_first_owner(id);
+      read_lock.wr_lock();
+      return false;
+    }
+  }
+  /** Acquire an exclusive lock or upgrade an update lock
+  @return whether U locks were upgraded to X */
+  bool x_lock_upgraded(const char *, unsigned) { return x_lock_upgraded(); }
 
   /** @return whether a shared lock was acquired */
   bool s_lock_try() { return read_lock.rd_lock_try(); }

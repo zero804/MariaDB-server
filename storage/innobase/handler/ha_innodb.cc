@@ -14310,7 +14310,7 @@ inline int ha_innobase::defragment_table()
     }
 
     btr_pcur_t pcur;
-    pcur.btr_cur.index = nullptr;
+    pcur.btr_cur.index= nullptr;
     btr_pcur_init(&pcur);
 
     mtr_t mtr;
