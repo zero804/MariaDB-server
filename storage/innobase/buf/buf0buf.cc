@@ -3913,7 +3913,7 @@ ATTRIBUTE_COLD void buf_pool_t::corrupted_evict(buf_page_t *bpage)
   bpage->set_corrupt_id();
 
   if (bpage->state() == BUF_BLOCK_FILE_PAGE)
-    reinterpret_cast<buf_block_t*>(bpage)->lock.x_unlock();
+    reinterpret_cast<buf_block_t*>(bpage)->lock.x_unlock(true);
   bpage->io_unfix();
 
   /* remove from LRU and page_hash */

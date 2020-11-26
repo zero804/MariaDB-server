@@ -369,15 +369,8 @@ void buf_page_write_complete(const IORequest &request)
     buf_dblwr.write_completed();
   }
 
-  /* Because this thread which does the unlocking might not be the same that
-  did the locking, we use a pass value != 0 in unlock, which simply
-  removes the newest lock debug record, without checking the thread id. */
   if (bpage->state() == BUF_BLOCK_FILE_PAGE)
-  {
-    buf_block_t *block= reinterpret_cast<buf_block_t*>(bpage);
-    ut_d(block->lock.claim_ownership());
-    block->lock.u_unlock();
-  }
+    reinterpret_cast<buf_block_t*>(bpage)->lock.u_unlock(true);
 
   buf_pool.stat.n_pages_written++;
 
@@ -796,7 +789,7 @@ static void buf_release_freed_page(buf_page_t *bpage)
   mysql_mutex_unlock(&buf_pool.flush_list_mutex);
 
   if (uncompressed)
-    reinterpret_cast<buf_block_t*>(bpage)->lock.u_unlock();
+    reinterpret_cast<buf_block_t*>(bpage)->lock.u_unlock(true);
 
   buf_LRU_free_page(bpage, true);
   mysql_mutex_unlock(&buf_pool.mutex);
@@ -825,7 +818,7 @@ static bool buf_flush_page(buf_page_t *bpage, bool lru, fil_space_t *space)
   else
   {
     rw_lock= &reinterpret_cast<buf_block_t*>(bpage)->lock;
-    if (!rw_lock->u_lock_try())
+    if (!rw_lock->u_lock_try(true))
       return false;
   }
 
@@ -873,7 +866,7 @@ static bool buf_flush_page(buf_page_t *bpage, bool lru, fil_space_t *space)
     if (UNIV_UNLIKELY(lsn > log_sys.get_flushed_lsn()))
     {
       if (rw_lock)
-        rw_lock->u_unlock();
+        rw_lock->u_unlock(true);
       mysql_mutex_lock(&buf_pool.mutex);
       bpage->set_io_fix(BUF_IO_NONE);
       return false;

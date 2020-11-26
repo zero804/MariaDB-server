@@ -36,6 +36,9 @@ class sux_lock ut_d(: public latch_t)
   srw_lock_low write_lock;
   /** The owner of the U or X lock (0 if none); protected by write_lock */
   std::atomic<os_thread_id_t> writer;
+  /** Special writer!=0 value to indicate that the lock is non-recursive
+  and will be released by an I/O thread */
+  static constexpr os_thread_id_t FOR_IO= IF_WIN(INVALID_HANDLE_VALUE, -1);
   /** Number of recursive U or X locks. Protected by write_lock.
   In debug builds, this is incremented also for the first lock request. */
   uint32_t recursive;
@@ -106,12 +109,15 @@ public:
 
 private:
   /** Acquire the writer lock component (for U or X lock)
+  @param for_io  whether the lock will be released by another thread
   @return whether this was a recursive acquisition */
-  template<bool allow_readers> bool writer_lock()
+  template<bool allow_readers> bool writer_lock(bool for_io= false)
   {
     os_thread_id_t id= os_thread_get_curr_id();
-    if (writer.load(std::memory_order_acquire) == id)
+    if (writer.load(std::memory_order_relaxed) == id)
     {
+      if (for_io)
+        return false;
       writer_recurse<allow_readers>();
       return true;
     }
@@ -120,7 +126,7 @@ private:
       write_lock.wr_lock();
       ut_ad(!recursive);
       ut_d(recursive= allow_readers ? RECURSIVE_U : RECURSIVE_X);
-      set_first_owner(id);
+      set_first_owner(for_io ? FOR_IO : id);
       return false;
     }
   }
@@ -130,8 +136,9 @@ private:
   @return whether this was a recursive release */
   bool writer_unlock(bool allow_readers, bool claim_ownership= false)
   {
-    ut_ad(writer == os_thread_get_curr_id() ||
-          (claim_ownership &&
+    ut_d(auto owner= writer.load(std::memory_order_relaxed));
+    ut_ad(owner == os_thread_get_curr_id() ||
+          (owner == FOR_IO && claim_ownership &&
            recursive == (allow_readers ? RECURSIVE_U : RECURSIVE_X)));
     ut_d(auto rec= (recursive / (allow_readers ? RECURSIVE_U : RECURSIVE_X)) &
          RECURSIVE_MAX);
@@ -169,7 +176,7 @@ public:
 
   /** @return whether the current thread is holding X or U latch */
   bool have_u_or_x() const
-  { return os_thread_get_curr_id() == writer.load(std::memory_order_acquire); }
+  { return os_thread_get_curr_id() == writer.load(std::memory_order_relaxed); }
 #ifdef UNIV_DEBUG
   /** @return whether the current thread is holding X latch */
   bool have_x() const
@@ -182,8 +189,10 @@ public:
   void s_lock() { ut_ad(!have_x()); read_lock.rd_lock(); }
   /** Acquire an update lock */
   void u_lock() { if (!writer_lock<true>()) read_lock.rd_lock(); }
-  /** Acquire an exclusive lock */
-  void x_lock() { if (!writer_lock<false>()) read_lock.wr_lock(); }
+  /** Acquire an exclusive lock
+  @param for_io  whether the lock will be released by another thread */
+  void x_lock(bool for_io= false)
+  { if (!writer_lock<false>(for_io)) read_lock.wr_lock(); }
   /** Acquire a recursive exclusive lock */
   void x_lock_recursive() { writer_recurse<false>(); }
   /** Acquire a shared lock */
@@ -191,17 +200,23 @@ public:
   /** Acquire an update lock */
   void u_lock(const char *, unsigned) { u_lock(); }
   /** Acquire an exclusive lock */
-  void x_lock(const char *, unsigned) { x_lock(); }
+  void x_lock(const char *, unsigned, bool for_io= false) { x_lock(for_io); }
 
   /** @return whether a shared lock was acquired */
   bool s_lock_try() { return read_lock.rd_lock_try(); }
-  /** @return whether an write lock was acquired */
+  /** Try to acquire an update or exclusive lock
+  @tparam allow_readers  true=update, false=exclusive
+  @param for_io  whether the lock will be released by another thread
+  @return whether the lock was acquired */
   template<bool allow_readers> bool u_or_x_lock_try(const char *file_name,
-                                                    unsigned line)
+                                                    unsigned line,
+                                                    bool for_io= false)
   {
     os_thread_id_t id= os_thread_get_curr_id();
-    if (writer.load(std::memory_order_acquire) == id)
+    if (writer.load(std::memory_order_relaxed) == id)
     {
+      if (for_io)
+        return false;
       writer_recurse<allow_readers>();
       return true;
     }
@@ -213,17 +228,22 @@ public:
       {
         ut_ad(!recursive);
         ut_d(recursive= allow_readers ? RECURSIVE_U : RECURSIVE_X);
-        set_first_owner(id);
+        set_first_owner(for_io ? FOR_IO : id);
         return true;
       }
       write_lock.wr_unlock();
     }
     return false;
   }
-  /** @return whether an update lock was acquired */
-  bool u_lock_try() { return u_or_x_lock_try<true>(nullptr, 0); }
-  /** @return whether an exclusive lock was acquired */
-  bool x_lock_try(const char *file_name, unsigned line)
+  /** Try to acquire an update lock
+  @param for_io  whether the lock will be released by another thread
+  @return whether the update lock was acquired */
+  bool u_lock_try(bool for_io= false)
+  { return u_or_x_lock_try<true>(nullptr, 0, for_io); }
+  /** Try to acquire an exclusive lock
+  @param for_io  whether the lock will be released by another thread
+  @return whether an exclusive lock was acquired */
+  bool x_lock_try(const char *file_name, unsigned line, bool for_io= false)
   { return u_or_x_lock_try<false>(file_name, line); }
 
   /** Release a shared lock */
