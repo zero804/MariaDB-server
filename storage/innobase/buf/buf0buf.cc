@@ -2753,93 +2753,6 @@ buf_wait_for_read(
 	}
 }
 
-#ifdef BTR_CUR_HASH_ADAPT
-/** If a stale adaptive hash index exists on the block, drop it.
-Multiple executions of btr_search_drop_page_hash_index() on the
-same block must be prevented by exclusive page latch. */
-ATTRIBUTE_COLD
-static void buf_defer_drop_ahi(buf_block_t *block, mtr_memo_type_t fix_type)
-{
-  switch (fix_type) {
-  case MTR_MEMO_BUF_FIX:
-    /* We do not drop the adaptive hash index, because safely doing
-    so would require acquiring block->lock, and that is not safe
-    to acquire in some RW_NO_LATCH access paths. Those code paths
-    should have no business accessing the adaptive hash index anyway. */
-    break;
-  case MTR_MEMO_PAGE_S_FIX:
-    /* Temporarily release our S-latch. */
-    block->lock.s_unlock();
-    block->lock.x_lock(__FILE__, __LINE__);
-    if (dict_index_t *index= block->index)
-      if (index->freed())
-        btr_search_drop_page_hash_index(block);
-    block->lock.x_unlock();
-    block->lock.s_lock();
-    break;
-  case MTR_MEMO_PAGE_SX_FIX:
-    block->lock.u_unlock();
-    block->lock.x_lock(__FILE__, __LINE__);
-    if (dict_index_t *index= block->index)
-      if (index->freed())
-        btr_search_drop_page_hash_index(block);
-    block->lock.u_lock();
-    block->lock.x_unlock();
-    break;
-  default:
-    ut_ad(fix_type == MTR_MEMO_PAGE_X_FIX);
-    btr_search_drop_page_hash_index(block);
-  }
-}
-#endif /* BTR_CUR_HASH_ADAPT */
-
-/** Lock the page with the given latch type.
-@param[in,out]	block		block to be locked
-@param[in]	rw_latch	RW_S_LATCH, RW_X_LATCH, RW_NO_LATCH
-@param[in]	mtr		mini-transaction
-@param[in]	file		file name
-@param[in]	line		line where called
-@return pointer to locked block */
-static buf_block_t* buf_page_mtr_lock(buf_block_t *block,
-                                      ulint rw_latch,
-                                      mtr_t* mtr,
-                                      const char *file,
-                                      unsigned line)
-{
-  mtr_memo_type_t fix_type;
-  switch (rw_latch)
-  {
-  case RW_NO_LATCH:
-    fix_type= MTR_MEMO_BUF_FIX;
-    goto done;
-  case RW_S_LATCH:
-    fix_type= MTR_MEMO_PAGE_S_FIX;
-    block->lock.s_lock(file, line);
-    break;
-  case RW_SX_LATCH:
-    fix_type= MTR_MEMO_PAGE_SX_FIX;
-    block->lock.u_lock(file, line);
-    break;
-  default:
-    ut_ad(rw_latch == RW_X_LATCH);
-    fix_type= MTR_MEMO_PAGE_X_FIX;
-    block->lock.x_lock(file, line);
-    break;
-  }
-
-#ifdef BTR_CUR_HASH_ADAPT
-  {
-    dict_index_t *index= block->index;
-    if (index && index->freed())
-      buf_defer_drop_ahi(block, fix_type);
-  }
-#endif /* BTR_CUR_HASH_ADAPT */
-
-done:
-  mtr_memo_push(mtr, block, fix_type);
-  return block;
-}
-
 /** Low level function used to get access to a database page.
 @param[in]	page_id			page id
 @param[in]	zip_size		ROW_FORMAT=COMPRESSED page size, or 0
@@ -3363,8 +3276,7 @@ re_evict:
 		}
 	} else {
 get_latch:
-		fix_block = buf_page_mtr_lock(fix_block, rw_latch, mtr,
-					      file, line);
+		mtr->page_lock(fix_block, rw_latch, file, line);
 	}
 
 	if (!not_first_access && mode != BUF_PEEK_IF_IN_POOL) {
@@ -3427,7 +3339,7 @@ buf_page_get_gen(
       }
       block->lock.x_unlock();
     }
-    block= buf_page_mtr_lock(block, rw_latch, mtr, file, line);
+    mtr->page_lock(block, rw_latch, file, line);
     return block;
   }
 

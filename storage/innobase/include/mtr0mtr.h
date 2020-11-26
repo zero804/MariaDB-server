@@ -315,6 +315,15 @@ public:
     return false;
 #endif
   }
+
+  /** Latch a buffer pool block.
+  @param block    block to be latched
+  @param rw_latch RW_S_LATCH, RW_SX_LATCH, RW_X_LATCH, RW_NO_LATCH
+  @param file     file name
+  @param line     line where called */
+  void page_lock(buf_block_t *block, ulint rw_latch,
+                 const char *file, unsigned line);
+
   /** Check if we are holding tablespace latch
   @param space  tablespace to search for
   @param shared whether to look for shared latch, instead of exclusive

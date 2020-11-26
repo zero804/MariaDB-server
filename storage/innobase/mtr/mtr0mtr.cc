@@ -32,6 +32,9 @@ Created 11/26/1995 Heikki Tuuri
 #include "page0types.h"
 #include "mtr0log.h"
 #include "log0recv.h"
+#ifdef BTR_CUR_HASH_ADAPT
+# include "btr0sea.h"
+#endif
 
 /** Iterate over a memo block in reverse. */
 template <typename Functor>
@@ -959,6 +962,85 @@ bool mtr_t::memo_contains(const fil_space_t& space, bool shared)
     return false;
   ut_ad(shared || space.is_owner());
   return true;
+}
+
+#ifdef BTR_CUR_HASH_ADAPT
+/** If a stale adaptive hash index exists on the block, drop it.
+Multiple executions of btr_search_drop_page_hash_index() on the
+same block must be prevented by exclusive page latch. */
+ATTRIBUTE_COLD
+static void mtr_defer_drop_ahi(buf_block_t *block, mtr_memo_type_t fix_type)
+{
+  switch (fix_type) {
+  case MTR_MEMO_BUF_FIX:
+    /* We do not drop the adaptive hash index, because safely doing
+    so would require acquiring block->lock, and that is not safe
+    to acquire in some RW_NO_LATCH access paths. Those code paths
+    should have no business accessing the adaptive hash index anyway. */
+    break;
+  case MTR_MEMO_PAGE_S_FIX:
+    /* Temporarily release our S-latch. */
+    block->lock.s_unlock();
+    block->lock.x_lock(__FILE__, __LINE__);
+    if (dict_index_t *index= block->index)
+      if (index->freed())
+        btr_search_drop_page_hash_index(block);
+    block->lock.x_unlock();
+    block->lock.s_lock();
+    break;
+  case MTR_MEMO_PAGE_SX_FIX:
+    block->lock.u_unlock();
+    block->lock.x_lock(__FILE__, __LINE__);
+    if (dict_index_t *index= block->index)
+      if (index->freed())
+        btr_search_drop_page_hash_index(block);
+    block->lock.u_lock();
+    block->lock.x_unlock();
+    break;
+  default:
+    ut_ad(fix_type == MTR_MEMO_PAGE_X_FIX);
+    btr_search_drop_page_hash_index(block);
+  }
+}
+#endif /* BTR_CUR_HASH_ADAPT */
+
+/** Latch a buffer pool block.
+@param block    block to be latched
+@param rw_latch RW_S_LATCH, RW_SX_LATCH, RW_X_LATCH, RW_NO_LATCH
+@param file     file name
+@param line     line where called */
+void mtr_t::page_lock(buf_block_t *block, ulint rw_latch,
+                      const char *file, unsigned line)
+{
+  mtr_memo_type_t fix_type;
+  switch (rw_latch)
+  {
+  case RW_NO_LATCH:
+    fix_type= MTR_MEMO_BUF_FIX;
+    goto done;
+  case RW_S_LATCH:
+    fix_type= MTR_MEMO_PAGE_S_FIX;
+    block->lock.s_lock(file, line);
+    break;
+  case RW_SX_LATCH:
+    fix_type= MTR_MEMO_PAGE_SX_FIX;
+    block->lock.u_lock(file, line);
+    break;
+  default:
+    ut_ad(rw_latch == RW_X_LATCH);
+    fix_type= MTR_MEMO_PAGE_X_FIX;
+    block->lock.x_lock(file, line);
+    break;
+  }
+
+#ifdef BTR_CUR_HASH_ADAPT
+  if (dict_index_t *index= block->index)
+    if (index->freed())
+      mtr_defer_drop_ahi(block, fix_type);
+#endif /* BTR_CUR_HASH_ADAPT */
+
+done:
+  memo_push(block, fix_type);
 }
 
 #ifdef UNIV_DEBUG
