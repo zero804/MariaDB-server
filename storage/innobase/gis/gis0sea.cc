@@ -275,7 +275,6 @@ rtr_pcur_getnext_from_path(
 		if (block == NULL) {
 			continue;
 		} else if (rw_latch != RW_NO_LATCH) {
-			ut_ad(!dict_index_is_ibuf(index));
 			buf_block_dbg_add_level(block, SYNC_TREE_NODE);
 		}
 

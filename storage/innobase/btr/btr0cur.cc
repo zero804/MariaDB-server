@@ -1481,21 +1481,25 @@ x_latch_index:
 		upper_rw_latch = RW_X_LATCH;
 		break;
 	case BTR_CONT_MODIFY_TREE:
+		ut_ad(srv_read_only_mode
+		      || mtr->memo_contains_flagged(&index->lock,
+						    MTR_MEMO_X_LOCK
+						    | MTR_MEMO_SX_LOCK));
+		if (index->is_spatial()) {
+			/* If we are about to locate parent page for split
+			and/or merge operation for R-Tree index, X latch
+			the parent */
+			upper_rw_latch = RW_X_LATCH;
+			break;
+		}
+		/* fall through */
 	case BTR_CONT_SEARCH_TREE:
 		/* Do nothing */
 		ut_ad(srv_read_only_mode
 		      || mtr->memo_contains_flagged(&index->lock,
 						    MTR_MEMO_X_LOCK
 						    | MTR_MEMO_SX_LOCK));
-		if (dict_index_is_spatial(index)
-		    && latch_mode == BTR_CONT_MODIFY_TREE) {
-			/* If we are about to locating parent page for split
-			and/or merge operation for R-Tree index, X latch
-			the parent */
-			upper_rw_latch = RW_X_LATCH;
-		} else {
-			upper_rw_latch = RW_NO_LATCH;
-		}
+		upper_rw_latch = RW_NO_LATCH;
 		break;
 	default:
 		if (!srv_read_only_mode) {
