@@ -236,23 +236,27 @@ row_undo_ins_remove_sec_low(
 	row_mtr_start(&mtr, index, !modify_leaf);
 
 	if (modify_leaf) {
-		mode = BTR_MODIFY_LEAF | BTR_ALREADY_S_LATCHED;
+		if (index->is_spatial()) {
+			mode = BTR_MODIFY_LEAF | BTR_ALREADY_S_LATCHED
+				| BTR_RTREE_UNDO_INS | BTR_RTREE_DELETE_MARK;
+			btr_pcur_get_btr_cur(&pcur)->thr = thr;
+		} else {
+			mode = BTR_MODIFY_LEAF | BTR_ALREADY_S_LATCHED;
+		}
 		mtr_s_lock_index(index, &mtr);
 	} else {
 		ut_ad(mode == (BTR_MODIFY_TREE | BTR_LATCH_FOR_DELETE));
-		mtr_sx_lock_index(index, &mtr);
+		if (index->is_spatial()) {
+			mode = BTR_MODIFY_TREE | BTR_LATCH_FOR_DELETE
+				| BTR_RTREE_UNDO_INS;
+			mtr_x_lock_index(index, &mtr);
+		} else {
+			mtr_sx_lock_index(index, &mtr);
+		}
 	}
 
 	if (row_log_online_op_try(index, entry, 0)) {
 		goto func_exit_no_pcur;
-	}
-
-	if (dict_index_is_spatial(index)) {
-		if (modify_leaf) {
-			mode |= BTR_RTREE_DELETE_MARK;
-		}
-		btr_pcur_get_btr_cur(&pcur)->thr = thr;
-		mode |= BTR_RTREE_UNDO_INS;
 	}
 
 	switch (row_search_index_entry(index, entry, mode, &pcur, &mtr)) {
