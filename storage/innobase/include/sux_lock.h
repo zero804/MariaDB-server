@@ -116,8 +116,7 @@ private:
     os_thread_id_t id= os_thread_get_curr_id();
     if (writer.load(std::memory_order_relaxed) == id)
     {
-      if (for_io)
-        return false;
+      ut_ad(!for_io);
       writer_recurse<allow_readers>();
       return true;
     }
