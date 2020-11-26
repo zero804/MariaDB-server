@@ -70,9 +70,6 @@ public:
   void read_lock(uint32_t l);
   /** Wait for a write lock after a failed write_trylock() */
   void write_lock();
-public:
-  /** needed for dict_index_t::clone() */
-  void operator=(const srw_lock_low &) {}
 # endif
 
 public:

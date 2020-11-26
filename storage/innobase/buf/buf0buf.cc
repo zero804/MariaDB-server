@@ -4184,7 +4184,10 @@ release_page:
   did the locking, we use a pass value != 0 in unlock, which simply
   removes the newest lock debug record, without checking the thread id. */
   if (bpage->state() == BUF_BLOCK_FILE_PAGE)
-    reinterpret_cast<buf_block_t*>(bpage)->lock.x_unlock();
+  {
+    buf_block_t *block= reinterpret_cast<buf_block_t*>(bpage);
+    block->lock.x_unlock(true);
+  }
   bpage->io_unfix();
 
   ut_d(auto n=) buf_pool.n_pend_reads--;

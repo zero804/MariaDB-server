@@ -35,7 +35,7 @@ class sux_lock ut_d(: public latch_t)
   /** The first lock component for U and X modes. Only acquired in X mode. */
   srw_lock_low write_lock;
   /** The owner of the U or X lock (0 if none); protected by write_lock */
-  Atomic_relaxed<os_thread_id_t> writer;
+  std::atomic<os_thread_id_t> writer;
   /** Number of recursive U or X locks. Protected by write_lock.
   In debug builds, this is incremented also for the first lock request. */
   uint32_t recursive;
@@ -63,7 +63,7 @@ public:
                      latch_level_t level= SYNC_LEVEL_VARYING)
   {
     write_lock.init();
-    writer= 0;
+    writer.store(0, std::memory_order_relaxed);
     recursive= 0;
     read_lock.init();
     ut_d(debug_lock.init());
@@ -87,6 +87,9 @@ public:
     ut_d(debug_lock.destroy());
     ut_d(level= SYNC_UNKNOWN);
   }
+
+  /** needed for dict_index_t::clone() */
+  void operator=(const sux_lock&) {}
 
 #ifdef UNIV_DEBUG
   /** @return whether no recursive locks are being held */
@@ -114,7 +117,7 @@ private:
   template<bool allow_readers> bool writer_lock()
   {
     os_thread_id_t id= os_thread_get_curr_id();
-    if (writer == id)
+    if (writer.load(std::memory_order_acquire) == id)
     {
       writer_recurse<allow_readers>();
       return true;
@@ -129,10 +132,14 @@ private:
     }
   }
   /** Release the writer lock component (for U or X lock)
+  @param allow_readers    whether we are releasing a U lock
+  @param claim_ownership  whether the lock was acquired by another thread
   @return whether this was a recursive release */
-  bool writer_unlock(bool allow_readers)
+  bool writer_unlock(bool allow_readers, bool claim_ownership= false)
   {
-    ut_ad(writer == os_thread_get_curr_id());
+    ut_ad(writer == os_thread_get_curr_id() ||
+          (claim_ownership &&
+           recursive == (allow_readers ? RECURSIVE_U : RECURSIVE_X)));
     ut_d(auto rec= (recursive / (allow_readers ? RECURSIVE_U : RECURSIVE_X)) &
          RECURSIVE_MAX);
     ut_ad(rec >= 1);
@@ -144,21 +151,23 @@ private:
       recursive-= allow_readers ? RECURSIVE_U : RECURSIVE_X;
       return true;
     }
-    write_lock.wr_unlock();
     set_new_owner(0);
+    write_lock.wr_unlock();
     return false;
   }
   /** Transfer the ownership of a write lock to another thread
   @param id the new owner of the U or X lock */
   void set_new_owner(os_thread_id_t id)
   {
-    IF_DBUG(DBUG_ASSERT(writer.exchange(id)), writer= id);
+    IF_DBUG(DBUG_ASSERT(writer.exchange(id, std::memory_order_relaxed)),
+            writer.store(id, std::memory_order_relaxed));
   }
   /** Assign the ownership of a write lock to a thread
   @param id the owner of the U or X lock */
   void set_first_owner(os_thread_id_t id)
   {
-    IF_DBUG(DBUG_ASSERT(!writer.exchange(id)), writer= id);
+    IF_DBUG(DBUG_ASSERT(writer.exchange(id, std::memory_order_acquire)),
+            writer.store(id, std::memory_order_acquire));
   }
 public:
   /** In crash recovery or the change buffer, claim the ownership
@@ -167,7 +176,7 @@ public:
 
   /** @return whether the current thread is holding X or U latch */
   bool have_u_or_x() const
-  { return os_thread_get_curr_id() == writer; }
+  { return os_thread_get_curr_id() == writer.load(std::memory_order_acquire); }
 #ifdef UNIV_DEBUG
   /** @return whether the current thread is holding X latch */
   bool have_x() const
@@ -204,7 +213,7 @@ public:
                                                     unsigned line)
   {
     os_thread_id_t id= os_thread_get_curr_id();
-    if (writer == id)
+    if (writer.load(std::memory_order_acquire) == id)
     {
       writer_recurse<allow_readers>();
       return true;
@@ -238,9 +247,11 @@ public:
   /** Release a shared lock */
   void s_unlock() { read_lock.rd_unlock(); }
   /** Release an update lock */
-  void u_unlock() { if (!writer_unlock(true)) read_lock.rd_unlock(); }
+  void u_unlock(bool claim_ownership= false)
+  { if (!writer_unlock(true, claim_ownership)) read_lock.rd_unlock(); }
   /** Release an exclusive lock */
-  void x_unlock() { if (!writer_unlock(false)) read_lock.wr_unlock(); }
+  void x_unlock(bool claim_ownership= false)
+  { if (!writer_unlock(false, claim_ownership)) read_lock.wr_unlock(); }
   /** Release an update or exclusive lock */
   void u_or_x_unlock(bool allow_readers= false)
   {
