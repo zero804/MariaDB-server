@@ -52,11 +52,6 @@ class sux_lock ut_d(: public latch_t)
   static constexpr uint32_t RECURSIVE_U= 1U << 16;
   /** The maximum allowed level of recursion */
   static constexpr uint32_t RECURSIVE_MAX= RECURSIVE_U - 1;
-public:
-  /** File name where last x-locked */
-  const char *last_x_file_name;
-  /** Line number where last time x-locked */
-  unsigned last_x_line;
 
 public:
   void SUX_LOCK_INIT(mysql_pfs_key_t key= PFS_NOT_INSTRUMENTED,
@@ -72,8 +67,6 @@ public:
     ut_d(m_id= sync_latch_get_id(sync_latch_get_name(level)));
     ut_d(this->level= level);
     ut_ad(level != SYNC_UNKNOWN);
-    last_x_file_name= nullptr;
-    last_x_line= 0;
   }
 
   /** Free the rw-lock after create() */
@@ -190,21 +183,15 @@ public:
   /** Acquire an update lock */
   void u_lock() { if (!writer_lock<true>()) read_lock.rd_lock(); }
   /** Acquire an exclusive lock */
-  void x_lock(const char *file_name, unsigned line)
-  {
-    if (!writer_lock<false>())
-    {
-      read_lock.wr_lock();
-      last_x_file_name= file_name;
-      last_x_line= line;
-    }
-  }
+  void x_lock() { if (!writer_lock<false>()) read_lock.wr_lock(); }
   /** Acquire a recursive exclusive lock */
   void x_lock_recursive() { writer_recurse<false>(); }
   /** Acquire a shared lock */
   void s_lock(const char *, unsigned) { s_lock(); }
   /** Acquire an update lock */
   void u_lock(const char *, unsigned) { u_lock(); }
+  /** Acquire an exclusive lock */
+  void x_lock(const char *, unsigned) { x_lock(); }
 
   /** @return whether a shared lock was acquired */
   bool s_lock_try() { return read_lock.rd_lock_try(); }
@@ -227,11 +214,6 @@ public:
         ut_ad(!recursive);
         ut_d(recursive= allow_readers ? RECURSIVE_U : RECURSIVE_X);
         set_first_owner(id);
-        if (!allow_readers)
-        {
-          last_x_file_name= file_name;
-          last_x_line= line;
-        }
         return true;
       }
       write_lock.wr_unlock();
