@@ -3479,20 +3479,16 @@ buf_page_try_get_func(
   buf_block_buf_fix_inc(block);
   hash_lock->read_unlock();
 
-  mtr_memo_type_t fix_type= MTR_MEMO_PAGE_S_FIX;
-  if (!block->lock.s_lock_try())
+  /* We will always try to acquire an U latch.
+  In lock_rec_print() we may already be holding an S latch on the page,
+  and recursive S latch acquisition is not allowed. */
+  if (!block->lock.u_lock_try())
   {
-    /* Let us try to get an SX-latch. If the current thread
-    is holding an X-latch on the page, we cannot get an S-latch. */
-    fix_type= MTR_MEMO_PAGE_SX_FIX;
-    if (!block->lock.u_lock_try())
-    {
-      buf_block_buf_fix_dec(block);
-      return nullptr;
-    }
+    buf_block_buf_fix_dec(block);
+    return nullptr;
   }
 
-  mtr_memo_push(mtr, block, fix_type);
+  mtr_memo_push(mtr, block, MTR_MEMO_PAGE_SX_FIX);
 
 #ifdef UNIV_DEBUG
   if (!(++buf_dbg_counter % 5771)) buf_pool.validate();
