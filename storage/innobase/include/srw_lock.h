@@ -24,7 +24,19 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #endif
 
 #if defined SRW_LOCK_DUMMY || (!defined _WIN32 && !defined __linux__)
+/** An exclusive-only variant of srw_lock */
+class srw_mutex
+{
+  pthread_mutex_t lock;
+public:
+  void init() { pthread_mutex_init(&lock, nullptr); }
+  void destroy() { pthread_mutex_destroy(&lock); }
+  void wr_lock() { pthread_mutex_lock(&lock); }
+  void wr_unlock() { pthread_mutex_unlock(&lock); }
+  bool wr_lock_try() { return !pthread_mutex_trylock(&lock); }
+};
 #else
+# define srw_mutex srw_lock_low
 # ifdef _WIN32
 #  include <windows.h>
 # else
@@ -47,7 +59,7 @@ class srw_lock_low final
 #if defined SRW_LOCK_DUMMY || (!defined _WIN32 && !defined __linux__)
   rw_lock_t lock;
 public:
-  void init() { my_rwlock_init(key, &lock); }
+  void init() { my_rwlock_init(&lock, nullptr); }
   void destroy() { rwlock_destroy(&lock); }
   void rd_lock() { rw_rdlock(&lock); }
   void rd_unlock() { rw_unlock(&lock); }

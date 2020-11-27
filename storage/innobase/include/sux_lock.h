@@ -36,7 +36,7 @@ as well as recursive U and X latch acquisition */
 class sux_lock final ut_d(: public latch_t)
 {
   /** The first lock component for U and X modes. Only acquired in X mode. */
-  srw_lock_low write_lock;
+  srw_mutex write_lock;
   /** The owner of the U or X lock (0 if none); protected by write_lock */
   std::atomic<os_thread_id_t> writer;
   /** Special writer!=0 value to indicate that the lock is non-recursive
@@ -47,9 +47,9 @@ class sux_lock final ut_d(: public latch_t)
   /** The second component for U and X modes; the only component for S mode */
   srw_lock_low read_lock;
 #ifdef UNIV_DEBUG
-  /** Protects readers. Only wr_lock(), wr_unlock(). */
-  mutable srw_lock_low readers_lock;
-  /** Collection of threads that hold read_lock */
+  /** Protects readers */
+  mutable srw_mutex readers_lock;
+  /** Threads that hold read_lock in shared mode */
   std::atomic<std::set<os_thread_id_t>*> readers;
 #endif
 
