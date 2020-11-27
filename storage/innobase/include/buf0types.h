@@ -194,7 +194,6 @@ enum rw_lock_type_t
   RW_NO_LATCH= 1 << 3
 };
 
-#include "rw_lock.h"
 #include "sux_lock.h"
 
 class page_hash_latch : public rw_lock

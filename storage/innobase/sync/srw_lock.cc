@@ -16,20 +16,75 @@ this program; if not, write to the Free Software Foundation, Inc.,
 
 *****************************************************************************/
 
-#ifndef __linux__
-# error "This file is for Linux only"
-#endif
-
 #include "srw_lock.h"
+#include "srv0srv.h"
 
 #ifdef SRW_LOCK_DUMMY
-/* Work around a potential build failure by preventing an empty .o file */
-int srw_lock_dummy_function() { return 0; }
-#else
-# include <linux/futex.h>
-# include <sys/syscall.h>
+void srw_lock_low::init()
+{
+  DBUG_ASSERT(!is_locked_or_waiting());
+  mysql_mutex_init(0, &mutex, nullptr);
+  mysql_cond_init(0, &cond, nullptr);
+}
 
-# include "srv0srv.h"
+void srw_lock_low::destroy()
+{
+  DBUG_ASSERT(!is_locked_or_waiting());
+  mysql_mutex_destroy(&mutex);
+  mysql_cond_destroy(&cond);
+}
+
+inline void srw_lock_low::wait(uint32_t l)
+{
+  mysql_mutex_lock(&mutex);
+  if (value() == l)
+    mysql_cond_wait(&cond, &mutex);
+  mysql_mutex_unlock(&mutex);
+}
+
+inline void srw_lock_low::wake_one()
+{
+  mysql_mutex_lock(&mutex);
+  mysql_cond_signal(&cond);
+  mysql_mutex_unlock(&mutex);
+}
+
+inline void srw_lock_low::wake_all()
+{
+  mysql_mutex_lock(&mutex);
+  mysql_cond_broadcast(&cond);
+  mysql_mutex_unlock(&mutex);
+}
+#else
+static_assert(4 == sizeof(rw_lock), "ABI");
+# ifdef _WIN32
+#  include <synchapi.h>
+
+inline void srw_lock_low::wait(uint32_t l)
+{
+  WaitOnAddress(word(), &l, 4, INFINITE);
+}
+inline void srw_lock_low::wake_one() { WakeByAddressSingle(word()); }
+inline void srw_lock_low::wake_all() { WakeByAddressAll(word()); }
+# else
+#  ifdef __linux__
+#   include <linux/futex.h>
+#   include <sys/syscall.h>
+#   define SRW_FUTEX(a,op,n) \
+    syscall(SYS_futex, a, FUTEX_ ## op ## _PRIVATE, n, nullptr, nullptr, 0)
+#  elif defined __OpenBSD__
+#  include <sys/time.h>
+#  include <sys/futex.h>
+#   define SRW_FUTEX(a,op,n) futex(a, FUTEX_ ## op, n)
+#  else
+#   error "no futex support"
+#  endif
+
+inline void srw_lock_low::wait(uint32_t l) { SRW_FUTEX(word(), WAIT, l); }
+inline void srw_lock_low::wake_one() { SRW_FUTEX(word(), WAKE, 1); }
+inline void srw_lock_low::wake_all() { SRW_FUTEX(word(), WAKE, INT_MAX); }
+# endif
+#endif
 
 /** Wait for a read lock.
 @param lock word value from a failed read_trylock() */
@@ -38,8 +93,18 @@ void srw_lock_low::read_lock(uint32_t l)
   do
   {
     if (l == WRITER_WAITING)
+    {
     wake_writer:
-      syscall(SYS_futex, word(), FUTEX_WAKE_PRIVATE, 1, nullptr, nullptr, 0);
+#ifdef SRW_LOCK_DUMMY
+      mysql_mutex_lock(&mutex);
+      mysql_cond_signal(&cond);
+      mysql_cond_wait(&cond, &mutex);
+      mysql_mutex_unlock(&mutex);
+      continue;
+#else
+      wake_one();
+#endif
+    }
     else
       for (auto spin= srv_n_spin_wait_rounds; spin; spin--)
       {
@@ -50,7 +115,7 @@ void srw_lock_low::read_lock(uint32_t l)
           goto wake_writer;
       }
 
-    syscall(SYS_futex, word(), FUTEX_WAIT_PRIVATE, l, nullptr, nullptr, 0);
+    wait(l);
   }
   while (!read_trylock(l));
 }
@@ -83,19 +148,10 @@ void srw_lock_low::write_lock()
     else
       DBUG_ASSERT(~WRITER_WAITING & l);
 
-    syscall(SYS_futex, word(), FUTEX_WAIT_PRIVATE, l, nullptr, nullptr, 0);
+    wait(l);
   }
 }
 
-void srw_lock_low::rd_unlock()
-{
-  if (read_unlock())
-    syscall(SYS_futex, word(), FUTEX_WAKE_PRIVATE, 1, nullptr, nullptr, 0);
-}
+void srw_lock_low::rd_unlock() { if (read_unlock()) wake_one(); }
 
-void srw_lock_low::wr_unlock()
-{
-  write_unlock();
-  syscall(SYS_futex, word(), FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
-}
-#endif
+void srw_lock_low::wr_unlock() { write_unlock(); wake_all(); }

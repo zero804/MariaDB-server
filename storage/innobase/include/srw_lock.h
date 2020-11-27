@@ -19,11 +19,13 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #pragma once
 #include "univ.i"
 
-#if 0 // defined SAFE_MUTEX
-# define SRW_LOCK_DUMMY /* Use mysql_rwlock_t for debugging purposes */
+#if !(defined __linux__ || defined _WIN32 || defined __OpenBSD__)
+# define SRW_LOCK_DUMMY
+#elif 0 // defined SAFE_MUTEX
+# define SRW_LOCK_DUMMY /* Use dummy implementation for debugging purposes */
 #endif
 
-#if defined SRW_LOCK_DUMMY || (!defined _WIN32 && !defined __linux__)
+#ifdef SRW_LOCK_DUMMY
 /** An exclusive-only variant of srw_lock */
 class srw_mutex
 {
@@ -37,49 +39,17 @@ public:
 };
 #else
 # define srw_mutex srw_lock_low
-# ifdef _WIN32
-#  include <windows.h>
-# else
-#  include "rw_lock.h"
-# endif
 #endif
 
-#ifdef UNIV_PFS_RWLOCK
-# define SRW_LOCK_INIT(key) init(key)
-#else
-# define SRW_LOCK_INIT(key) init()
-#endif
+#include "rw_lock.h"
 
 /** Slim reader-writer lock with no recursion */
-class srw_lock_low final
-#if defined __linux__ && !defined SRW_LOCK_DUMMY
-  : protected rw_lock
-#endif
+class srw_lock_low final : protected rw_lock
 {
-#if defined SRW_LOCK_DUMMY || (!defined _WIN32 && !defined __linux__)
-  rw_lock_t lock;
-public:
-  void init() { my_rwlock_init(&lock, nullptr); }
-  void destroy() { rwlock_destroy(&lock); }
-  void rd_lock() { rw_rdlock(&lock); }
-  void rd_unlock() { rw_unlock(&lock); }
-  void wr_lock() { rw_wrlock(&lock); }
-  void wr_unlock() { rw_unlock(&lock); }
-  bool rd_lock_try() { return !rw_tryrdlock(&lock); }
-  bool wr_lock_try() { return !rw_trywrlock(&lock); }
-#else
-# ifdef _WIN32
-  SRWLOCK lock;
-  bool read_trylock() { return TryAcquireSRWLockShared(&lock); }
-  bool write_trylock() { return TryAcquireSRWLockExclusive(&lock); }
-  void read_lock() { AcquireSRWLockShared(&lock); }
-  void write_lock() { AcquireSRWLockExclusive(&lock); }
-  bool available() const
-  {
-    SRWLOCK inited= SRWLOCK_INIT;
-    return !memcmp(&lock, &inited, sizeof lock);
-  }
-# else
+#ifdef SRW_LOCK_DUMMY
+  mysql_mutex_t mutex;
+  mysql_cond_t cond;
+#endif
   /** @return pointer to the lock word */
   rw_lock *word() { return static_cast<rw_lock*>(this); }
   /** Wait for a read lock.
@@ -87,43 +57,35 @@ public:
   void read_lock(uint32_t l);
   /** Wait for a write lock after a failed write_trylock() */
   void write_lock();
-  bool available() const
-  {
-    static_assert(4 == sizeof(rw_lock), "ABI");
-    return !is_locked_or_waiting();
-  }
-# endif
-
+  /** Wait for signal
+  @param l lock word from a failed acquisition */
+  inline void wait(uint32_t l);
+  /** Send signal to one waiter */
+  inline void wake_one();
+  /** Send signal to all waiters */
+  inline void wake_all();
 public:
-  void init()
-  {
-    DBUG_ASSERT(available());
-  }
-  void destroy() { DBUG_ASSERT(available()); }
-  bool rd_lock_try()
-  { IF_WIN(,uint32_t l); return read_trylock(IF_WIN(, l)); }
-  bool wr_lock_try() { return write_trylock(); }
-  void rd_lock()
-  {
-    IF_WIN(read_lock(), uint32_t l; if (!read_trylock(l)) read_lock(l));
-  }
-  void wr_lock()
-  {
-    IF_WIN(, if (!write_trylock())) write_lock();
-  }
-#ifdef _WIN32
-  void rd_unlock() { ReleaseSRWLockShared(&lock); }
-  void wr_unlock() { ReleaseSRWLockExclusive(&lock); }
+#ifdef SRW_LOCK_DUMMY
+  void init();
+  void destroy();
 #else
+  void init() { DBUG_ASSERT(!is_locked_or_waiting()); }
+  void destroy() { DBUG_ASSERT(!is_locked_or_waiting()); }
+#endif
+  bool rd_lock_try() { uint32_t l; return read_trylock(l); }
+  bool wr_lock_try() { return write_trylock(); }
+  void rd_lock() { uint32_t l; if (!read_trylock(l)) read_lock(l); }
+  void wr_lock() { if (!write_trylock()) write_lock(); }
   void rd_unlock();
   void wr_unlock();
-#endif
-#endif
 };
 
 #ifndef UNIV_PFS_RWLOCK
+# define SRW_LOCK_INIT(key) init()
 typedef srw_lock_low srw_lock;
 #else
+# define SRW_LOCK_INIT(key) init(key)
+
 /** Slim reader-writer lock with optional PERFORMANCE_SCHEMA instrumentation */
 class srw_lock
 {
