@@ -659,7 +659,7 @@ row_log_table_delete(
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_ad(rec_offs_n_fields(offsets) == dict_index_get_n_fields(index));
 	ut_ad(rec_offs_size(offsets) <= sizeof index->online_log->tail.buf);
-	// ut_ad(index->lock.have_any());
+	ut_ad(index->lock.have_any());
 
 	if (index->online_status != ONLINE_INDEX_CREATION
 	    || (index->type & DICT_CORRUPT) || index->table->corrupted
@@ -954,7 +954,7 @@ row_log_table_low(
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_ad(rec_offs_n_fields(offsets) == dict_index_get_n_fields(index));
 	ut_ad(rec_offs_size(offsets) <= sizeof log->tail.buf);
-	// ut_ad(index->lock.have_any());
+	ut_ad(index->lock.have_any());
 
 #ifdef UNIV_DEBUG
 	switch (fil_page_get_type(page_align(rec))) {
@@ -1235,7 +1235,7 @@ row_log_table_get_pk(
 	ut_ad(dict_index_is_clust(index));
 	ut_ad(dict_index_is_online_ddl(index));
 	ut_ad(!offsets || rec_offs_validate(rec, index, offsets));
-	// ut_ad(index->lock.have_any());
+	ut_ad(index->lock.have_any());
 	ut_ad(log);
 	ut_ad(log->table);
 	ut_ad(log->min_trx);
@@ -3285,11 +3285,9 @@ row_log_get_max_trx(
 	dict_index_t*	index)	/*!< in: index, must be locked */
 {
 	ut_ad(dict_index_get_online_status(index) == ONLINE_INDEX_CREATION);
-#if 0//FIXME
 	ut_ad(index->lock.have_x()
 	      || (index->lock.have_s()
 		  && mutex_own(&index->online_log->mutex)));
-#endif
 	return(index->online_log->max_trx);
 }
 

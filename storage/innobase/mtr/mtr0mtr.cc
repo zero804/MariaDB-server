@@ -173,12 +173,12 @@ struct FindPage
 		    || m_ptr >= block->frame + srv_page_size) {
 			return(true);
 		}
-#if 0 // FIXME
-		ut_ad(!(m_flags & (MTR_MEMO_PAGE_S_FIX
-				   | MTR_MEMO_PAGE_SX_FIX
-				   | MTR_MEMO_PAGE_X_FIX))
-		      || rw_lock_own_flagged(&block->lock, m_flags));
-#endif
+		ut_ad(!(slot->type & MTR_MEMO_PAGE_S_FIX)
+		      || block->lock.have_s());
+		ut_ad(!(slot->type & MTR_MEMO_PAGE_SX_FIX)
+		      || block->lock.have_u_or_x());
+		ut_ad(!(slot->type & MTR_MEMO_PAGE_X_FIX)
+		      || block->lock.have_x());
 		m_slot = slot;
 		return(false);
 	}
@@ -1090,7 +1090,7 @@ bool mtr_t::memo_contains(const sux_lock &lock, mtr_memo_type_t type)
     ut_ad(lock.have_u_or_x()); // FIXME: ut_ad(lock.have_u());
     break;
   case MTR_MEMO_S_LOCK:
-    // FIXME: ut_ad(lock.have_s());
+    ut_ad(lock.have_s());
     break;
   default:
     break;
@@ -1135,22 +1135,31 @@ struct FlaggedCheck {
 	@retval	true	if the iteration should continue */
 	bool operator()(const mtr_memo_slot_t* slot) const
 	{
-		if (m_ptr != slot->object || !(m_flags & slot->type)) {
+		if (m_ptr != slot->object) {
 			return(true);
 		}
-#if 0 // FIXME
-		if (ulint flags = m_flags & (MTR_MEMO_PAGE_S_FIX
-					     | MTR_MEMO_PAGE_SX_FIX
-					     | MTR_MEMO_PAGE_X_FIX)) {
+
+		auto f = m_flags & slot->type;
+		if (!f) {
+			return true;
+		}
+
+		if (f & (MTR_MEMO_PAGE_S_FIX | MTR_MEMO_PAGE_SX_FIX
+			 | MTR_MEMO_PAGE_X_FIX)) {
 			sux_lock* lock = &static_cast<buf_block_t*>(
 				const_cast<void*>(m_ptr))->lock;
-			ut_ad(rw_lock_own_flagged(lock, flags));
+			ut_ad(!(f & MTR_MEMO_PAGE_S_FIX) || lock->have_s());
+			ut_ad(!(f & MTR_MEMO_PAGE_SX_FIX)
+			      || lock->have_u_or_x());
+			ut_ad(!(f & MTR_MEMO_PAGE_X_FIX) || lock->have_x());
 		} else {
 			sux_lock* lock = static_cast<sux_lock*>(
 				const_cast<void*>(m_ptr));
-			ut_ad(rw_lock_own_flagged(lock, m_flags >> 5));
+			ut_ad(!(f & MTR_MEMO_S_LOCK) || lock->have_s());
+			ut_ad(!(f & MTR_MEMO_SX_LOCK) || lock->have_u_or_x());
+			ut_ad(!(f & MTR_MEMO_X_LOCK) || lock->have_x());
 		}
-#endif
+
 		return(false);
 	}
 

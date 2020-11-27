@@ -240,11 +240,9 @@ buf_block_get_modify_clock(
 /*=======================*/
 	buf_block_t*	block)	/*!< in: block */
 {
-#if 0 // FIXME
 	/* No latch is acquired for the shared temporary tablespace. */
 	ut_ad(fsp_is_system_temporary(block->page.id().space())
 	      || block->lock.have_any());
-#endif
 	return(block->modify_clock);
 }
 

@@ -20,6 +20,9 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "srw_lock.h"
 #include "my_atomic_wrapper.h"
 #include "os0thread.h"
+#ifdef UNIV_DEBUG
+# include <set>
+#endif
 
 #if 0 // FIXME: defined UNIV_PFS_RWLOCK
 # define SUX_LOCK_INIT(key, level) init(key, level)
@@ -30,7 +33,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 /** A "fat" rw-lock that supports
 S (shared), U (update, or shared-exclusive), and X (exclusive) modes
 as well as recursive U and X latch acquisition */
-class sux_lock ut_d(: public latch_t)
+class sux_lock final ut_d(: public latch_t)
 {
   /** The first lock component for U and X modes. Only acquired in X mode. */
   srw_lock_low write_lock;
@@ -44,8 +47,10 @@ class sux_lock ut_d(: public latch_t)
   /** The second component for U and X modes; the only component for S mode */
   srw_lock_low read_lock;
 #ifdef UNIV_DEBUG
-  /** debug_list lock. Only acquired in X mode. */
-  srw_lock_low debug_lock;
+  /** Protects readers. Only wr_lock(), wr_unlock(). */
+  mutable srw_lock_low readers_lock;
+  /** Collection of threads that hold read_lock */
+  std::atomic<std::set<os_thread_id_t>*> readers;
 #endif
 
   /** The multiplier in recursive for X locks */
@@ -60,10 +65,11 @@ public:
                      latch_level_t level= SYNC_LEVEL_VARYING)
   {
     write_lock.init();
-    writer.store(0, std::memory_order_relaxed);
-    recursive= 0;
+    ut_ad(!writer.load(std::memory_order_relaxed));
+    ut_ad(!recursive);
     read_lock.init();
-    ut_d(debug_lock.init());
+    ut_d(readers_lock.init());
+    ut_ad(!readers.load(std::memory_order_relaxed));
     ut_d(m_rw_lock= true);
     //ut_d(UT_LIST_INIT(debug_list, &rw_lock_debug_t::list));
     ut_d(m_id= sync_latch_get_id(sync_latch_get_name(level)));
@@ -77,9 +83,17 @@ public:
     ut_ad(created());
     ut_ad(!writer);
     ut_ad(!recursive);
+#ifdef UNIV_DEBUG
+    readers_lock.destroy();
+    if (auto r= readers.load(std::memory_order_relaxed))
+    {
+      ut_ad(r->empty());
+      delete r;
+      readers.store(nullptr, std::memory_order_relaxed);
+    }
+#endif
     write_lock.destroy();
     read_lock.destroy();
-    ut_d(debug_lock.destroy());
     ut_d(level= SYNC_UNKNOWN);
   }
 
@@ -161,6 +175,22 @@ private:
     IF_DBUG(DBUG_ASSERT(!writer.exchange(id, std::memory_order_relaxed)),
             writer.store(id, std::memory_order_relaxed));
   }
+#ifdef UNIV_DEBUG
+  /** Register the current thread as a holder of a shared lock */
+  void s_lock_register()
+  {
+    readers_lock.wr_lock();
+    auto r= readers.load(std::memory_order_relaxed);
+    if (!r)
+    {
+      r= new std::set<os_thread_id_t>();
+      readers.store(r, std::memory_order_relaxed);
+    }
+    ut_ad(r->emplace(os_thread_get_curr_id()).second);
+    readers_lock.wr_unlock();
+  }
+#endif
+
 public:
   /** In crash recovery or the change buffer, claim the ownership
   of the exclusive block lock to the current thread */
@@ -181,12 +211,30 @@ public:
   bool have_x() const
   { return have_u_or_x() && ((recursive / RECURSIVE_X) & RECURSIVE_MAX); }
 #ifdef UNIV_DEBUG
+  /** @return whether the current thread is holding S latch */
+  bool have_s() const
+  {
+    if (auto r= readers.load(std::memory_order_relaxed))
+    {
+      readers_lock.wr_lock();
+      bool found= r->find(os_thread_get_curr_id()) != r->end();
+      readers_lock.wr_unlock();
+      return found;
+    }
+    return false;
+  }
   /** @return whether the current thread is holding the latch */
-  bool have_any() const { return have_u_or_x() /* FIXME */; }
+  bool have_any() const { return have_u_or_x() || have_s(); }
 #endif
 
   /** Acquire a shared lock */
-  void s_lock() { ut_ad(!have_x()); read_lock.rd_lock(); }
+  void s_lock()
+  {
+    ut_ad(!have_x());
+    ut_ad(!have_s());
+    read_lock.rd_lock();
+    ut_d(s_lock_register());
+  }
   /** Acquire an update lock */
   void u_lock() { if (!writer_lock<true>()) read_lock.rd_lock(); }
   /** Acquire an exclusive lock
@@ -236,7 +284,12 @@ public:
   bool x_lock_upgraded(const char *, unsigned) { return x_lock_upgraded(); }
 
   /** @return whether a shared lock was acquired */
-  bool s_lock_try() { return read_lock.rd_lock_try(); }
+  bool s_lock_try()
+  {
+    bool acquired= read_lock.rd_lock_try();
+    ut_d(if (acquired) s_lock_register());
+    return acquired;
+  }
   /** Try to acquire an update or exclusive lock
   @tparam allow_readers  true=update, false=exclusive
   @param for_io  whether the lock will be released by another thread
@@ -280,7 +333,17 @@ public:
   { return u_or_x_lock_try<false>(file_name, line); }
 
   /** Release a shared lock */
-  void s_unlock() { read_lock.rd_unlock(); }
+  void s_unlock()
+  {
+#ifdef UNIV_DEBUG
+    auto r= readers.load(std::memory_order_relaxed);
+    ut_ad(r);
+    readers_lock.wr_lock();
+    ut_ad(r->erase(os_thread_get_curr_id()) == 1);
+    readers_lock.wr_unlock();
+#endif
+    read_lock.rd_unlock();
+  }
   /** Release an update lock */
   void u_unlock(bool claim_ownership= false)
   { if (!writer_unlock(true, claim_ownership)) read_lock.rd_unlock(); }

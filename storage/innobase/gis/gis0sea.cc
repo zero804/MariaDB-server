@@ -256,21 +256,15 @@ rtr_pcur_getnext_from_path(
 		/* set up savepoint to record any locks to be taken */
 		rtr_info->tree_savepoints[tree_idx] = mtr_set_savepoint(mtr);
 
-#ifdef UNIV_RTR_DEBUG
-		ut_ad(!(rw_lock_own_flagged(&btr_cur->page_cur.block->lock,
-					    RW_LOCK_FLAG_X | RW_LOCK_FLAG_S))
-			|| my_latch_mode == BTR_MODIFY_TREE
-			|| my_latch_mode == BTR_CONT_MODIFY_TREE
-			|| !page_is_leaf(buf_block_get_frame(
-					btr_cur->page_cur.block)));
-#endif /* UNIV_RTR_DEBUG */
-
-		dberr_t err = DB_SUCCESS;
+		ut_ad(my_latch_mode == BTR_MODIFY_TREE
+		      || my_latch_mode == BTR_CONT_MODIFY_TREE
+		      || !page_is_leaf(btr_cur_get_page(btr_cur))
+		      || !btr_cur->page_cur.block->lock.have_any());
 
 		block = buf_page_get_gen(
 			page_id_t(index->table->space_id,
 				  next_rec.page_no), zip_size,
-			rw_latch, NULL, BUF_GET, __FILE__, __LINE__, mtr, &err);
+			rw_latch, NULL, BUF_GET, __FILE__, __LINE__, mtr);
 
 		if (block == NULL) {
 			continue;

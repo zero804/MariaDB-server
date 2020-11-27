@@ -305,7 +305,7 @@ row_undo_mod_clust(
 	ut_ad(online || !dict_index_is_online_ddl(index));
 
 	if (err == DB_SUCCESS && online) {
-		// FIXME: ut_ad(index->lock.have_any());
+		ut_ad(index->lock.have_any());
 
 		switch (node->rec_type) {
 		case TRX_UNDO_DEL_MARK_REC:
