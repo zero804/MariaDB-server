@@ -62,6 +62,11 @@ public:
   bool write_trylock() { return TryAcquireSRWLockExclusive(&lock); }
   void read_lock() { AcquireSRWLockShared(&lock); }
   void write_lock() { AcquireSRWLockExclusive(&lock); }
+  bool available() const
+  {
+    SRWLOCK inited= SRWLOCK_INIT;
+    return !memcmp(&lock, &inited, sizeof lock);
+  }
 # else
   /** @return pointer to the lock word */
   rw_lock *word() { return static_cast<rw_lock*>(this); }
@@ -70,17 +75,19 @@ public:
   void read_lock(uint32_t l);
   /** Wait for a write lock after a failed write_trylock() */
   void write_lock();
+  bool available() const
+  {
+    static_assert(4 == sizeof(rw_lock), "ABI");
+    return !is_locked_or_waiting();
+  }
 # endif
 
 public:
   void init()
   {
-    IF_WIN(lock= SRWLOCK_INIT, static_assert(4 == sizeof(rw_lock), "ABI"));
+    DBUG_ASSERT(available());
   }
-  void destroy()
-  {
-    IF_WIN(, DBUG_ASSERT(!is_locked_or_waiting()));
-  }
+  void destroy() { DBUG_ASSERT(available()); }
   bool rd_lock_try()
   { IF_WIN(,uint32_t l); return read_trylock(IF_WIN(, l)); }
   bool wr_lock_try() { return write_trylock(); }
