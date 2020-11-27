@@ -583,7 +583,7 @@ void thread_pool_generic::check_idle(std::chrono::system_clock::time_point now)
 
   if (idle_since == invalid_timestamp)
   {
-    m_idle_since= now;
+    idle_since= now;
     return;
   }
 
