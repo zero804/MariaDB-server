@@ -38,9 +38,8 @@ class sux_lock ut_d(: public latch_t)
   std::atomic<os_thread_id_t> writer;
   /** Special writer!=0 value to indicate that the lock is non-recursive
   and will be released by an I/O thread */
-  static constexpr os_thread_id_t FOR_IO= IF_WIN(INVALID_HANDLE_VALUE, -1);
-  /** Number of recursive U or X locks. Protected by write_lock.
-  In debug builds, this is incremented also for the first lock request. */
+  static constexpr os_thread_id_t FOR_IO= os_thread_id_t(~0UL);
+  /** Numbers of U and X locks. Protected by write_lock. */
   uint32_t recursive;
   /** The second component for U and X modes; the only component for S mode */
   srw_lock_low read_lock;
@@ -124,7 +123,7 @@ private:
     {
       write_lock.wr_lock();
       ut_ad(!recursive);
-      ut_d(recursive= allow_readers ? RECURSIVE_U : RECURSIVE_X);
+      recursive= allow_readers ? RECURSIVE_U : RECURSIVE_X;
       set_first_owner(for_io ? FOR_IO : id);
       return false;
     }
@@ -141,15 +140,9 @@ private:
            recursive == (allow_readers ? RECURSIVE_U : RECURSIVE_X)));
     ut_d(auto rec= (recursive / (allow_readers ? RECURSIVE_U : RECURSIVE_X)) &
          RECURSIVE_MAX);
-    ut_ad(rec >= 1);
-    ut_d(recursive-= allow_readers ? RECURSIVE_U : RECURSIVE_X);
-
-    if (UNIV_UNLIKELY(recursive))
-    {
-      ut_d(return true);
-      recursive-= allow_readers ? RECURSIVE_U : RECURSIVE_X;
+    ut_ad(rec);
+    if (recursive-= allow_readers ? RECURSIVE_U : RECURSIVE_X)
       return true;
-    }
     set_new_owner(0);
     write_lock.wr_unlock();
     return false;
@@ -165,8 +158,8 @@ private:
   @param id the owner of the U or X lock */
   void set_first_owner(os_thread_id_t id)
   {
-    IF_DBUG(DBUG_ASSERT(writer.exchange(id, std::memory_order_acquire)),
-            writer.store(id, std::memory_order_acquire));
+    IF_DBUG(DBUG_ASSERT(!writer.exchange(id, std::memory_order_relaxed)),
+            writer.store(id, std::memory_order_relaxed));
   }
 public:
   /** In crash recovery or the change buffer, claim the ownership
@@ -232,7 +225,7 @@ public:
     {
       write_lock.wr_lock();
       ut_ad(!recursive);
-      ut_d(recursive= RECURSIVE_X);
+      recursive= RECURSIVE_X;
       set_first_owner(id);
       read_lock.wr_lock();
       return false;
@@ -267,7 +260,7 @@ public:
       if (allow_readers ? read_lock.rd_lock_try() : read_lock.wr_lock_try())
       {
         ut_ad(!recursive);
-        ut_d(recursive= allow_readers ? RECURSIVE_U : RECURSIVE_X);
+        recursive= allow_readers ? RECURSIVE_U : RECURSIVE_X;
         set_first_owner(for_io ? FOR_IO : id);
         return true;
       }
