@@ -184,6 +184,8 @@ override_dh_installinit-arch:
 	dh_installinit --name=mariadb --no-start -- defaults 19 21
 	dh_systemd_start --restart-after-upgrade
 
+override_dh_gencontrol:
+	dh_gencontrol -- -Tdebian/substvars
 
 # If a file is not supposed to be included anywhere, add it to the not-installed
 # file and document the reason. Note that dh_install supports the above mentioned

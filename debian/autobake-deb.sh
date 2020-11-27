@@ -88,10 +88,12 @@ PATCHLEVEL="+maria"
 LOGSTRING="MariaDB build"
 CODENAME="$(lsb_release -sc)"
 EPOCH="1:"
+VERSION="${EPOCH}${UPSTREAM}${PATCHLEVEL}~${CODENAME}"
 
-dch -b -D "${CODENAME}" -v "${EPOCH}${UPSTREAM}${PATCHLEVEL}~${CODENAME}" "Automatic build with ${LOGSTRING}."
+dch -b -D "${CODENAME}" -v "${VERSION}" "Automatic build with ${LOGSTRING}."
+echo "server:Version=${VERSION}" >> debian/substvars
 
-echo "Creating package version ${EPOCH}${UPSTREAM}${PATCHLEVEL}~${CODENAME} ... "
+echo "Creating package version ${VERSION} ... "
 
 # On Travis CI and Gitlab-CI, use -b to build binary only packages as there is
 # no need to waste time on generating the source package.
