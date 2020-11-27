@@ -77,7 +77,7 @@ ut_print_timestamp(
 		cal_tm.wDay,
 		cal_tm.wHour,
 		cal_tm.wMinute,
-		cal_tm.wSecond
+		cal_tm.wSecond,
 #else
 		cal_tm.tm_year + 1900,
 		cal_tm.tm_mon + 1,
