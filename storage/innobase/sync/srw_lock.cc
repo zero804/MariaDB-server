@@ -23,37 +23,37 @@ this program; if not, write to the Free Software Foundation, Inc.,
 void srw_lock_low::init()
 {
   DBUG_ASSERT(!is_locked_or_waiting());
-  mysql_mutex_init(0, &mutex, nullptr);
-  mysql_cond_init(0, &cond, nullptr);
+  pthread_mutex_init(&mutex, nullptr);
+  pthread_cond_init(&cond, nullptr);
 }
 
 void srw_lock_low::destroy()
 {
   DBUG_ASSERT(!is_locked_or_waiting());
-  mysql_mutex_destroy(&mutex);
-  mysql_cond_destroy(&cond);
+  pthread_mutex_destroy(&mutex);
+  pthread_cond_destroy(&cond);
 }
 
 inline void srw_lock_low::wait(uint32_t l)
 {
-  mysql_mutex_lock(&mutex);
+  pthread_mutex_lock(&mutex);
   if (value() == l)
-    mysql_cond_wait(&cond, &mutex);
-  mysql_mutex_unlock(&mutex);
+    pthread_cond_wait(&cond, &mutex);
+  pthread_mutex_unlock(&mutex);
 }
 
 inline void srw_lock_low::wake_one()
 {
-  mysql_mutex_lock(&mutex);
-  mysql_cond_signal(&cond);
-  mysql_mutex_unlock(&mutex);
+  pthread_mutex_lock(&mutex);
+  pthread_cond_signal(&cond);
+  pthread_mutex_unlock(&mutex);
 }
 
 inline void srw_lock_low::wake_all()
 {
-  mysql_mutex_lock(&mutex);
-  mysql_cond_broadcast(&cond);
-  mysql_mutex_unlock(&mutex);
+  pthread_mutex_lock(&mutex);
+  pthread_cond_broadcast(&cond);
+  pthread_mutex_unlock(&mutex);
 }
 #else
 static_assert(4 == sizeof(rw_lock), "ABI");
@@ -96,10 +96,14 @@ void srw_lock_low::read_lock(uint32_t l)
     {
     wake_writer:
 #ifdef SRW_LOCK_DUMMY
-      mysql_mutex_lock(&mutex);
-      mysql_cond_signal(&cond);
-      mysql_cond_wait(&cond, &mutex);
-      mysql_mutex_unlock(&mutex);
+      pthread_mutex_lock(&mutex);
+      {
+        pthread_cond_signal(&cond);
+        pthread_cond_wait(&cond, &mutex);
+        l= value();
+      }
+      while (l == WRITER_WAITING);
+      pthread_mutex_unlock(&mutex);
       continue;
 #else
       wake_one();

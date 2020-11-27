@@ -47,8 +47,8 @@ public:
 class srw_lock_low final : protected rw_lock
 {
 #ifdef SRW_LOCK_DUMMY
-  mysql_mutex_t mutex;
-  mysql_cond_t cond;
+  pthread_mutex_t mutex;
+  pthread_cond_t cond;
 #endif
   /** @return pointer to the lock word */
   rw_lock *word() { return static_cast<rw_lock*>(this); }
