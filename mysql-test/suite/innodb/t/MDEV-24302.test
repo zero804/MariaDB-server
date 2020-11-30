@@ -1,0 +1,41 @@
+--source include/have_innodb.inc
+# Testing group commit by crashing a few times.
+# Test adapted from the Facebook patch: lp:mysqlatfacebook
+--source include/not_embedded.inc
+# Don't test this under valgrind, memory leaks will occur
+--source include/not_valgrind.inc
+
+# Binary must be compiled with debug for crash to occur
+# --source include/have_debug.inc
+--source include/have_log_bin.inc
+
+CREATE TABLE t1(a CHAR(255),
+                b CHAR(255),
+                c CHAR(255),
+                d CHAR(255),
+                id INT,
+                PRIMARY KEY(id)) ENGINE=InnoDB;
+create table t2 like t1;
+
+--let numinserts = 10
+--let iter=100
+while ($iter)
+{
+# Avoid getting a crashed mysql.proc table.
+FLUSH TABLES;
+while ($numinserts)
+{
+  eval INSERT INTO t2(a, b, c, d, id) VALUES ('a', 'b', 'c', 'd', $iter*10+$numinserts);
+
+--dec $numinserts
+}
+SET binlog_format= mixed;
+RESET MASTER;
+
+--dec $iter
+--let numinserts = 10
+}
+
+# final cleanup
+DROP TABLE t1;
+DROP TABLE t2;
