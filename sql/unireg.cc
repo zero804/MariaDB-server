@@ -1529,6 +1529,7 @@ bool Foreign_key_io::parse(THD *thd, TABLE_SHARE *s, LEX_CUSTRING& image)
           push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN, ER_CANNOT_ADD_FOREIGN,
                               "Reference hint to non-existent table `%s.%s` skipped",
                               hint_db.str, hint_table.str);
+          rk_count--;
           continue;
         }
         return true;
