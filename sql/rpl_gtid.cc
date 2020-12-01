@@ -27,7 +27,17 @@
 #include "rpl_gtid.h"
 #include "rpl_rli.h"
 #include "log_event.h"
+#include "slave.h"
 
+#ifdef HAVE_REPLICATION
+void free_io_element(void *arg)
+{
+  struct rpl_binlog_state::io_element *e= (struct rpl_binlog_state::io_element *)arg;
+  my_free(e->conn_name);
+  my_hash_free(&e->gtid_list_hash);
+  my_free(e);
+}
+#endif
 const LEX_STRING rpl_gtid_slave_state_table_name=
   { C_STRING_WITH_LEN("gtid_slave_pos") };
 
@@ -1149,6 +1159,11 @@ rpl_binlog_state::rpl_binlog_state()
 {
   my_hash_init(&hash, &my_charset_bin, 32, offsetof(element, domain_id),
                sizeof(uint32), NULL, my_free, HASH_UNIQUE);
+#ifdef HAVE_REPLICATION
+  my_hash_init(&io_thd_hash, &my_charset_bin, MAX_REPLICATION_THREAD,
+               offsetof(io_element, conn_name),
+               sizeof(char*), NULL, free_io_element, HASH_UNIQUE);
+#endif
   my_init_dynamic_array(&gtid_sort_array, sizeof(rpl_gtid), 8, 8, MYF(0));
   mysql_mutex_init(key_LOCK_binlog_state, &LOCK_binlog_state,
                    MY_MUTEX_INIT_SLOW);
@@ -1183,6 +1198,7 @@ void rpl_binlog_state::free()
     initialized= 0;
     reset_nolock();
     my_hash_free(&hash);
+    my_hash_free(&io_thd_hash);
     delete_dynamic(&gtid_sort_array);
     mysql_mutex_destroy(&LOCK_binlog_state);
   }
@@ -1229,7 +1245,46 @@ rpl_binlog_state::load(rpl_slave_state *slave_pos)
   mysql_mutex_unlock(&LOCK_binlog_state);
   return res;
 }
+#ifdef HAVE_REPLICATION
+int rpl_binlog_state::set_binlog_state_used_by_master(rpl_gtid *gtid_list,
+                                                       uint32 num_gtids,
+                                                       char *conn_name)
+{
+  uint32 i;
+  int res= 1;
+  io_element *io_elem=NULL;
 
+  mysql_mutex_lock(&LOCK_binlog_state);
+  io_elem= (io_element *)my_malloc(sizeof(io_element), MYF(MY_WME));
+  io_elem->conn_name= my_strdup(conn_name, MYF(MY_WME));
+  my_hash_init(&io_elem->gtid_list_hash, &my_charset_bin, 32, offsetof(rpl_gtid, domain_id),
+               sizeof(uint32), NULL, NULL, HASH_UNIQUE);
+  for (i= 0; i < num_gtids; ++i)
+  {
+    rpl_gtid *gtid= (rpl_gtid *)my_malloc(sizeof(rpl_gtid), MYF(MY_WME));
+    memcpy(gtid, &gtid_list[i], sizeof(rpl_gtid));
+    if (my_hash_insert(&io_elem->gtid_list_hash, (uchar *)(gtid)))
+      goto err;
+  }
+  if (my_hash_insert(&io_thd_hash, (uchar *)(io_elem)))
+      goto err;
+  mysql_mutex_unlock(&LOCK_binlog_state);
+  res= 0;
+err:
+  return res;
+}
+
+uint32 rpl_binlog_state::is_binlog_state_used_by_master()
+{
+  return io_thd_hash.records;
+}
+
+void rpl_binlog_state::clear_binlog_state_used_by_master(io_element *io_elem)
+{
+  mysql_mutex_assert_owner(&LOCK_binlog_state);
+  my_hash_delete(&io_thd_hash, (uchar *)io_elem);
+}
+#endif // HAVE_REPLICATION
 
 rpl_binlog_state::~rpl_binlog_state()
 {
@@ -1293,7 +1348,12 @@ rpl_binlog_state::update_with_next_gtid(uint32 domain_id, uint32 server_id,
                                         rpl_gtid *gtid)
 {
   element *elem;
+  uint32 i=0;
+#ifdef HAVE_REPLICATION
+  uint32 io_thd_count= io_thd_hash.records;
+#endif
   int res= 0;
+  rpl_gtid *io_gtid;
 
   gtid->domain_id= domain_id;
   gtid->server_id= server_id;
@@ -1315,6 +1375,24 @@ rpl_binlog_state::update_with_next_gtid(uint32 domain_id, uint32 server_id,
   my_error(ER_OUT_OF_RESOURCES, MYF(0));
   res= 1;
 end:
+#ifdef HAVE_REPLICATION
+  if (is_binlog_state_used_by_master())
+  {
+    io_thd_count= io_thd_hash.records;
+    for (i= 0; i < io_thd_count; ++i)
+    {
+      io_element *e= (io_element *)my_hash_element(&io_thd_hash, i);
+      rpl_gtid *gtid= (rpl_gtid *)my_hash_element(&e->gtid_list_hash, i);
+      if ((io_gtid= (rpl_gtid*)my_hash_search(&e->gtid_list_hash, (const uchar *)(&domain_id), 0)))
+      {
+        sql_print_warning("Connection: %s is using gtid_cur_pos for replication and "
+            "modifying domain_id:%u domain_id:%u will cause replication to break.",
+            e->conn_name, domain_id, gtid->domain_id);
+        clear_binlog_state_used_by_master(e);
+      }
+    }
+  }
+#endif
   mysql_mutex_unlock(&LOCK_binlog_state);
   return res;
 }

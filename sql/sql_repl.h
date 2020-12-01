@@ -79,7 +79,8 @@ void rpl_init_gtid_waiting();
 void rpl_deinit_gtid_waiting();
 int gtid_state_from_binlog_pos(const char *name, uint32 pos, String *out_str);
 int rpl_append_gtid_state(String *dest, bool use_binlog);
-int rpl_load_gtid_state(slave_connection_state *state, bool use_binlog);
+int rpl_load_gtid_state(slave_connection_state *state, bool use_binlog,
+                        char *conn_name);
 bool rpl_gtid_pos_check(THD *thd, char *str, size_t len);
 bool rpl_gtid_pos_update(THD *thd, char *str, size_t len);
 #else

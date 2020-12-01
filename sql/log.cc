@@ -6101,6 +6101,14 @@ MYSQL_BIN_LOG::is_empty_state()
   return (rpl_global_gtid_binlog_state.count() == 0);
 }
 
+int MYSQL_BIN_LOG::set_binlog_state_used_by_master(rpl_gtid *gtid_list,
+                                                       uint32 num_gtids,
+                                                       char *conn_name)
+{
+  return rpl_global_gtid_binlog_state.set_binlog_state_used_by_master(gtid_list,
+                                                               num_gtids,
+                                                               conn_name);
+}
 
 bool
 MYSQL_BIN_LOG::find_in_binlog_state(uint32 domain_id, uint32 server_id_arg,

@@ -833,6 +833,10 @@ public:
                         uint64 commit_id);
   int read_state_from_file();
   int write_state_to_file();
+  int set_binlog_state_used_by_master(rpl_gtid *gtid_list,
+                                       uint32 num_gtids,
+                                       char *conn_name);
+  void clear_binlog_state_used_by_master();
   int get_most_recent_gtid_list(rpl_gtid **list, uint32 *size);
   bool append_state_pos(String *str);
   bool append_state(String *str);

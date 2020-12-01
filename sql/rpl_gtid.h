@@ -235,6 +235,7 @@ struct rpl_binlog_state
   /* Mutex protecting access to the state. */
   mysql_mutex_t LOCK_binlog_state;
   my_bool initialized;
+  my_bool binlog_state_used_by_master;
 
   /* Auxiliary buffer to sort gtid list. */
   DYNAMIC_ARRAY gtid_sort_array;
@@ -265,6 +266,18 @@ struct rpl_binlog_state
   rpl_gtid *find(uint32 domain_id, uint32 server_id);
   rpl_gtid *find_most_recent(uint32 domain_id);
   const char* drop_domain(DYNAMIC_ARRAY *ids, Gtid_list_log_event *glev, char*);
+#ifdef HAVE_REPLICATION
+  struct io_element {
+    char* conn_name;
+    HASH gtid_list_hash;                /* Containing all rpl_gtids list in gtid_current_pos */
+  };
+  HASH io_thd_hash;
+  int set_binlog_state_used_by_master(rpl_gtid *gtid_list,
+                                       uint32 num_gtids,
+                                       char *conn_name);
+  void clear_binlog_state_used_by_master(io_element *io_elem);
+  uint32 is_binlog_state_used_by_master();
+#endif
 };
 
 

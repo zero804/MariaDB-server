@@ -4411,15 +4411,24 @@ rpl_append_gtid_state(String *dest, bool use_binlog)
   enabled) is merged into the current GTID state (master_use_gtid=current_pos).
 */
 int
-rpl_load_gtid_state(slave_connection_state *state, bool use_binlog)
+rpl_load_gtid_state(slave_connection_state *state, bool use_binlog,
+                    char *conn_name)
 {
   int err;
   rpl_gtid *gtid_list= NULL;
   uint32 num_gtids= 0;
 
-  if (use_binlog && opt_bin_log &&
-      (err= mysql_bin_log.get_most_recent_gtid_list(&gtid_list, &num_gtids)))
-    return err;
+  if (use_binlog && opt_bin_log)
+  {
+    if ((err= mysql_bin_log.get_most_recent_gtid_list(&gtid_list, &num_gtids)))
+      return err;
+    if ((err= mysql_bin_log.set_binlog_state_used_by_master(gtid_list, num_gtids,
+                                                  conn_name)))
+    {
+      my_free(gtid_list);
+      return err;
+    }
+  }
 
   err= state->load(rpl_global_gtid_slave_state, gtid_list, num_gtids);
   my_free(gtid_list);

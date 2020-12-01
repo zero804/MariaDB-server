@@ -1041,7 +1041,8 @@ int start_slave_threads(THD *thd,
             sizeof(mi->rli.group_master_log_name)-1);
 
     error= rpl_load_gtid_state(&mi->gtid_current_pos, mi->using_gtid ==
-                                             Master_info::USE_GTID_CURRENT_POS);
+                                             Master_info::USE_GTID_CURRENT_POS,
+                                             mi->connection_name.str);
     mi->events_queued_since_last_gtid= 0;
     mi->gtid_reconnect_event_skip_count= 0;
 
