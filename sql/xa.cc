@@ -554,11 +554,13 @@ bool trans_xa_prepare(THD *thd)
 
 /**
   Commit and terminate the a XA transaction.
+  Transactional locks are released if transaction ended
 
   @param thd    Current thread
 
   @retval FALSE  Success
   @retval TRUE   Failure
+
 */
 
 bool trans_xa_commit(THD *thd)
@@ -726,6 +728,7 @@ bool trans_xa_commit(THD *thd)
 
 /**
   Roll back and terminate a XA transaction.
+  Transactional locks are released if transaction ended
 
   @param thd    Current thread
 
@@ -844,6 +847,8 @@ bool trans_xa_detach(THD *thd)
   thd->transaction->all.ha_list= 0;
   thd->transaction->all.no_2pc= 0;
   thd->m_transaction_psi= 0;
+  thd->server_status&= ~(SERVER_STATUS_IN_TRANS |
+                         SERVER_STATUS_IN_TRANS_READONLY);
   return false;
 }
 

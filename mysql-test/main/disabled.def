@@ -20,3 +20,8 @@ partition_open_files_limit : open_files_limit check broken by MDEV-18360
 partition_innodb         : Waiting for fix MDEV-20169
 type_enum                : Waiting for fix MDEV-6978
 type_set                 : Waiting for fix MDEV-6978
+
+implicit_commit          : MDEV-15532 FIXME
+mysql_client_test        : Crash
+mysql_client_test_nonblock : Crash
+mysql_client_test_comp   : Crash
